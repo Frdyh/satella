@@ -1,0 +1,33 @@
+{
+  "name": "satella-backend",
+  "version": "1.0.0",
+  "description": "Backend API para Satella — Sistema de gestión láctea",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:migrate": "npx prisma migrate dev --name init",
+    "db:seed": "node prisma/seed.js",
+    "db:reset": "npx prisma migrate reset --force",
+    "db:studio": "npx prisma studio"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "pdfkit": "^0.15.0",
+    "satella": "file:.."
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}

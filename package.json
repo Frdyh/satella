@@ -1,0 +1,17 @@
+{
+  "name": "satella",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Orquestador raíz: levanta backend y frontend de Satella con un solo comando.",
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "install:all": "npm install --prefix satella-backend && npm install --prefix satella-frontend",
+    "dev": "concurrently -n BACKEND,FRONTEND -c blue,magenta \"npm run dev --prefix satella-backend\" \"npm run dev --prefix satella-frontend\"",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

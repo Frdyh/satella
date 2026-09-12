@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Categoria {
+  id          Int       @id @default(autoincrement())
+  nombre      String    @db.VarChar(100)
+  descripcion String?   @db.VarChar(255)
+  productos   Producto[]
+}
+
+model Producto {
+  id               Int          @id @default(autoincrement())
+  nombre           String       @db.VarChar(150)
+  unidad           String       @db.VarChar(30)
+  precio           Float
+  stockActual      Int
+  stockMinimo      Int
+  lote             String?      @db.VarChar(50)
+  fechaVencimiento DateTime?
+  categoriaId      Int
+  proveedorId      Int
+  categoria        Categoria    @relation(fields: [categoriaId], references: [id])
+  proveedor        Proveedor    @relation(fields: [proveedorId], references: [id])
+  pedidoItems      PedidoItem[]
+
+  @@index([categoriaId])
+  @@index([proveedorId])
+}
+
+model Proveedor {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @db.VarChar(150)
+  contacto  String?   @db.VarChar(150)
+  telefono  String?   @db.VarChar(30)
+  productos Producto[]
+}
+
+model Cliente {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(150)
+  telefono  String?  @db.VarChar(30)
+  direccion String?  @db.VarChar(255)
+  ciudad    String?  @db.VarChar(100)
+  pedidos   Pedido[]
+}
+
+model Usuario {
+  id    Int    @id @default(autoincrement())
+  nombre String @db.VarChar(150)
+  rol    String @db.VarChar(50)
+  email  String @unique @db.VarChar(150)
+}
+
+model Pedido {
+  id                Int          @id @default(autoincrement())
+  fecha             DateTime     @default(now())
+  estado            String       @default("pendiente") @db.VarChar(30)
+  whatsappVerificado Boolean     @default(false)
+  whatsappNotas     String?      @db.VarChar(255)
+  clienteId         Int
+  cliente           Cliente      @relation(fields: [clienteId], references: [id])
+  items             PedidoItem[]
+  envio             Envio?
+
+  @@index([clienteId])
+}
+
+model PedidoItem {
+  id         Int     @id @default(autoincrement())
+  cantidad   Int
+  pedidoId   Int
+  productoId Int
+  pedido     Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto   Producto @relation(fields: [productoId], references: [id])
+
+  @@index([pedidoId])
+  @@index([productoId])
+}
+
+model Envio {
+  id                Int      @id @default(autoincrement())
+  fechaProgramada  DateTime
+  ventanaHoraria   String?  @db.VarChar(50)
+  estado           String   @default("en cola") @db.VarChar(30)
+  whatsappVerificado Boolean @default(false)
+  notas            String?  @db.VarChar(255)
+  pedidoId         Int      @unique
+  pedido           Pedido   @relation(fields: [pedidoId], references: [id])
+
+  @@index([pedidoId])
+}
