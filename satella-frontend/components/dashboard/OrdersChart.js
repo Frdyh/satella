@@ -1,11 +1,22 @@
 'use client';
 
 import Link from 'next/link';
+import { isSameDay } from '../../lib/useDashboardData';
 
-export default function OrdersChart() {
-  const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  const heights = [42, 61, 48, 76, 58, 88, 70];
-  const pedidos = [18, 26, 21, 33, 25, 38, 30];
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+export default function OrdersChart({ pedidos }) {
+  const today = new Date();
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    days.push(d);
+  }
+
+  const counts = days.map((d) => pedidos.filter((p) => isSameDay(new Date(p.fecha), d)).length);
+  const max = Math.max(1, ...counts);
+  const heights = counts.map((c) => Math.max(4, (c / max) * 100));
 
   return (
     <div className="bg-surface border border-border rounded-card shadow-card p-5">
@@ -26,7 +37,7 @@ export default function OrdersChart() {
           {heights.map((h, i) => (
             <div key={i} className="group relative flex-1 h-full flex items-end justify-center cursor-pointer">
               <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[var(--text-primary)] text-[var(--bg)] text-[10px] font-semibold px-1.5 py-0.5 rounded-[5px] opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 whitespace-nowrap pointer-events-none">
-                {pedidos[i]} pedidos
+                {counts[i]} pedido{counts[i] === 1 ? '' : 's'}
               </div>
               <div
                 className="w-full rounded-t-[5px] opacity-80 transition-all duration-150 group-hover:opacity-100 group-hover:brightness-110 group-hover:shadow-[0_0_14px_rgba(126,111,191,0.45)]"
@@ -39,8 +50,8 @@ export default function OrdersChart() {
           ))}
         </div>
         <div className="flex justify-around pt-2 text-text-muted text-[10px]">
-          {days.map((d) => (
-            <span key={d}>{d}</span>
+          {days.map((d, i) => (
+            <span key={i}>{DAY_LABELS[d.getDay()]}</span>
           ))}
         </div>
       </div>
