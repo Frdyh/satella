@@ -1,7 +1,7 @@
 /**
  * Limpia los datos del body antes de pasarlos a Prisma.
  * Convierte strings vacíos a null en campos opcionales,
- * y确保 que los IDs FK sean numéricos.
+ * y asegura que los IDs FK sean numéricos.
  */
 function sanitize(body, { dateFields = [], intFields = [] } = {}) {
   const cleaned = { ...body };
