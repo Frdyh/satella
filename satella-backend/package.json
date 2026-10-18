@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "test": "node --test",
     "db:migrate": "npx prisma migrate dev --name init",
     "db:seed": "node prisma/seed.js",
     "db:reset": "npx prisma migrate reset --force",
@@ -24,6 +25,7 @@
     "express": "^4.21.0",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "pdfkit": "^0.15.0",
     "satella": "file:.."
   },

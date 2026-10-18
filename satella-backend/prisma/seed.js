@@ -1,4 +1,7 @@
+require('dotenv').config();
+
 const { PrismaClient } = require('@prisma/client');
+const { hashPassword } = require('../src/utils/password');
 
 const prisma = new PrismaClient();
 
@@ -148,13 +151,13 @@ async function main() {
 
   console.log('Creando usuarios...');
   await prisma.usuario.create({
-    data: { nombre: 'Juan Valencia', rol: 'Administrador', email: 'juan@satella.local' },
+    data: { nombre: 'Juan Valencia', rol: 'Administrador', email: 'juan@satella.local', passwordHash: hashPassword('satella123') },
   });
   await prisma.usuario.create({
-    data: { nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local' },
+    data: { nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local', passwordHash: hashPassword('satella123') },
   });
   await prisma.usuario.create({
-    data: { nombre: 'Carlos Pérez', rol: 'Despachador', email: 'carlos@satella.local' },
+    data: { nombre: 'Carlos Pérez', rol: 'Despachador', email: 'carlos@satella.local', passwordHash: hashPassword('satella123') },
   });
 
   console.log('Creando pedidos...');

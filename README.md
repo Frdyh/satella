@@ -12,6 +12,8 @@ Satella es una aplicación web Full-Stack para gestionar la operación completa 
 - [Instalación y cómo ejecutar](#instalación-y-cómo-ejecutar)
 - [Diseño visual](#diseño-visual)
 - [Datos de ejemplo (seed)](#datos-de-ejemplo-seed)
+- [Tests](#tests)
+- [Seguridad: decisiones conocidas](#seguridad-decisiones-conocidas)
 - [Cómo explicar la arquitectura](#cómo-explicar-la-arquitectura)
 
 ## Stack tecnológico
@@ -70,9 +72,11 @@ Para peticiones con `:id` en la URL (ej. `GET /api/envios/5`), antes de llegar a
 
 ```
 src/
-├── index.js              Arranca Express, conecta middlewares globales y monta las rutas
+├── index.js              Carga .env, verifica JWT_SECRET y pone la app a escuchar en el puerto
+├── app.js                Crea la app de Express: middlewares globales y rutas (los tests la importan sin abrir puerto)
 ├── lib/prisma.js         Instancia única de PrismaClient
 ├── controllers/          ★ Lógica de negocio — el corazón del sistema
+│   ├── authController.js     Login y "quién soy" (/api/auth)
 │   ├── categoriasController.js
 │   ├── clientesController.js
 │   ├── enviosController.js
@@ -85,7 +89,9 @@ src/
 │   └── (un archivo por entidad, igual nombre que su controller)
 ├── middleware/             Funciones que corren antes/después de cada petición
 │   ├── errorHandler.js     Convierte errores (de Prisma o del código) en respuestas HTTP correctas
-│   ├── logger.js           Registra cada petición en consola
+│   ├── logger.js           Registra cada petición en consola (oculta ?token=)
+│   ├── requireAuth.js      Exige un token válido y deja el usuario en req.usuario
+│   ├── requireRole.js      Deja pasar solo ciertos roles (ej. Administrador)
 │   └── validateId.js       Valida el :id de la URL, reusado por las 8 rutas
 ├── services/                Lógica que cruza varias entidades o depende de un servicio externo
 │   └── whatsappVerification.js
@@ -93,6 +99,8 @@ src/
     ├── sanitize.js          Limpia/normaliza el body antes de guardarlo
     ├── validate.js          Reglas de validación reutilizables
     ├── pick.js               Filtra un objeto dejando solo los campos permitidos
+    ├── password.js           Hash y verificación de contraseñas (scrypt)
+    ├── token.js              Firma y verificación de tokens JWT
     └── paginate.js           Calcula skip/take a partir de ?page= y ?limit=
 ```
 
@@ -191,7 +199,9 @@ Definido en Prisma (`satella-backend/prisma/schema.prisma`):
 
 | Método  | Ruta                          | Descripción                     |
 |---------|-------------------------------|-----------------------------------|
-| GET     | `/api/health`                 | Health check                    |
+| GET     | `/api/health`                 | Health check (público)          |
+| POST    | `/api/auth/login`             | Iniciar sesión → `{ token, usuario }` (público) |
+| GET     | `/api/auth/me`                | Usuario de la sesión actual     |
 | GET     | `/api/categorias`             | Listar categorías               |
 | POST    | `/api/categorias`             | Crear categoría                 |
 | PUT     | `/api/categorias/:id`         | Actualizar categoría            |
@@ -226,12 +236,25 @@ Definido en Prisma (`satella-backend/prisma/schema.prisma`):
 | GET     | `/api/reportes/clientes`      | PDF de clientes                 |
 | GET     | `/api/reportes/envios`        | PDF de envíos                   |
 
+> **Autenticación:** salvo `/api/health` y `/api/auth/login`, todos los endpoints exigen el header `Authorization: Bearer <token>` (si falta o expiró responden `401`). Los PDF de reportes, que se abren en otra pestaña, aceptan el token como `?token=`. El login tiene un límite de 10 intentos cada 15 minutos por IP.
+>
+> En `/api/usuarios`, `POST` exige el campo `password` (mínimo 8 caracteres) y en `PUT` es opcional: si no se envía se conserva la contraseña actual. La API nunca devuelve el hash.
+>
+> **Permisos por rol en `/api/usuarios`** (responden `403` si no se cumplen):
+>
+> | Acción | Administrador | Operador / Despachador |
+> |--------|---------------|------------------------|
+> | Listar / ver | ✅ | ✅ |
+> | Crear (`POST`) y eliminar (`DELETE`) | ✅ (no puede borrarse a sí mismo) | ❌ |
+> | Editar (`PUT`) | ✅ a cualquiera, incluidos rol y contraseña (no puede quitarse su propio rol) | Solo su propia cuenta y sin cambiar su rol |
+
 > Los endpoints `GET` de listado aceptan paginación opcional (`?page=1&limit=20`, responde con header `X-Total-Count`) y filtros como `?search=`, `?estado=`, `?categoriaId=`, `?proveedorId=`, `?clienteId=` según la entidad.
 
 ## Vistas del frontend
 
 | Ruta          | Vista              | Descripción                                              |
 |---------------|--------------------|------------------------------------------------------------|
+| `/login`      | Iniciar sesión     | Formulario de correo y contraseña. Cualquier otra ruta redirige aquí si no hay sesión |
 | `/`           | Inicio             | Hub central con accesos rápidos (estilo LLM)             |
 | `/dashboard`  | Dashboard          | Stats, gráficos de pedidos/envíos/stock, actividad reciente |
 | `/envios`     | Envíos             | Tabla con filtros por estado + búsqueda                  |
@@ -268,6 +291,13 @@ Abre `satella-backend/.env` y ajusta `DATABASE_URL` con tu usuario/contraseña d
 DATABASE_URL="mysql://usuario:password@localhost:3306/satella_db"
 PORT=4000
 FRONTEND_URL=http://localhost:3000
+JWT_SECRET=un-valor-largo-y-aleatorio
+JWT_EXPIRES_IN=8h
+```
+
+`JWT_SECRET` es obligatorio (el servidor no arranca sin él). Puedes generar uno con:
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
 Aplica migraciones, carga datos de ejemplo y levanta el servidor:
@@ -308,6 +338,26 @@ También hay accesos directos que hacen lo mismo con doble clic (instalan depend
 - **`npx prisma migrate dev` pide crear la base de datos** — confirma que ya corriste el paso 2 y que el usuario de MySQL tiene permisos sobre `satella_db`.
 - **Puertos 3000 o 4000 ocupados** — cambia `PORT` en `satella-backend/.env` (y `NEXT_PUBLIC_API_URL` en el frontend) o cierra el proceso que los esté usando.
 
+## Tests
+
+El backend tiene tests automáticos de autenticación y permisos (`satella-backend/tests/`), escritos con el runner que ya trae Node (`node:test`), sin dependencias extra. **No necesitan MySQL**: reemplazan Prisma por una base de datos en memoria.
+
+```bash
+cd satella-backend
+npm test
+```
+
+Cubren: login (correcto, contraseña incorrecta, usuario inexistente, campos faltantes), `requireAuth` (sin token, token inválido, firmado con otro secreto, expirado, de un usuario borrado), límite de intentos de login, permisos por rol en `/api/usuarios` y que las contraseñas nunca se devuelvan ni se guarden en texto plano.
+
+## Seguridad: decisiones conocidas
+
+Estas son limitaciones asumidas a propósito para esta versión, no descuidos. Si el sistema pasa a manejar datos reales sensibles, conviene revisarlas.
+
+- **Cerrar sesión no invalida el token en el servidor.** Los tokens JWT no se guardan en el backend: "cerrar sesión" borra el token del navegador, pero si alguien lo hubiera copiado antes seguiría funcionando hasta que expire (`JWT_EXPIRES_IN`, 8 horas por defecto). Lo mismo pasa al cambiar la contraseña: las sesiones abiertas siguen vivas hasta expirar. Para revocarlas habría que agregar, por ejemplo, un campo `tokenVersion` en `Usuario` que se incremente al cambiar la contraseña y se compare en `requireAuth`. Mientras tanto, bajar `JWT_EXPIRES_IN` reduce el riesgo.
+- **El token se guarda en `localStorage`**, no en una cookie `httpOnly`. Es lo habitual en una SPA que llama a una API separada y evita tener que defenderse de CSRF, pero si algún día se inyectara JavaScript malicioso en la página (XSS) podría leer el token. React escapa el contenido por defecto, así que no se debe usar `dangerouslySetInnerHTML` con datos de usuarios.
+- **No hay "olvidé mi contraseña".** Es un panel interno: si alguien olvida su contraseña, un Administrador se la cambia desde Gestión de datos → Usuarios. Cada usuario puede cambiar la suya editando su propia cuenta.
+- **El token viaja en la URL de los PDF** (`?token=`) porque los enlaces que abren otra pestaña no pueden mandar headers. El backend lo oculta en sus logs, pero puede quedar en el historial del navegador.
+
 ## Diseño visual
 
 El mockup original (`docs/satella_app.html`) es la fuente de verdad visual: todos los valores de color, tipografía, espaciados y comportamiento del frontend fueron extraídos de ahí y replicados fielmente (paleta clara/oscura, Inter + Fraunces, modo oscuro con textura de estrellas, todo en Tailwind puro sin librerías UI).
@@ -323,6 +373,7 @@ El seed (`satella-backend/prisma/seed.js`) incluye datos del rubro lácteo colom
 - **Clientes:** 6 clientes de ciudades colombianas (Fusagasugá, Soacha, Bogotá, Girardot, Facatativá, Zipaquirá)
 - **Pedidos:** 5 pedidos con items (algunos confirmados, otros pendientes)
 - **Envíos:** 4 envíos en diferentes estados (en cola, en ruta, entregado)
+- **Usuarios (para iniciar sesión):** `juan@satella.local` (Administrador), `maria@satella.local` (Operador), `carlos@satella.local` (Despachador) — contraseña `satella123` para los tres. Cámbialas antes de usar el sistema con datos reales.
 
 ## Cómo explicar la arquitectura
 

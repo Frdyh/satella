@@ -42,6 +42,8 @@ const fieldConfigs = {
     { key: 'nombre', label: 'Nombre', type: 'text', required: true },
     { key: 'email', label: 'Email', type: 'email', required: true },
     { key: 'rol', label: 'Rol', type: 'select', options: ['Administrador', 'Operador', 'Despachador'] },
+    // Obligatoria solo al crear; al editar, vacío = conservar la contraseña actual.
+    { key: 'password', label: 'Contraseña', type: 'password', requiredOnCreate: true, minLength: 8 },
   ],
   categorias: [
     { key: 'nombre', label: 'Nombre', type: 'text', required: true },
@@ -152,7 +154,10 @@ export default function EntityForm({ entity, item, onSave, onCancel }) {
                 type={field.type}
                 value={formData[field.key] || ''}
                 onChange={(e) => handleChange(field.key, e.target.value)}
-                required={field.required}
+                required={field.required || (field.requiredOnCreate && !item)}
+                minLength={field.minLength}
+                placeholder={field.requiredOnCreate && item ? 'Dejar vacío para no cambiarla' : undefined}
+                autoComplete={field.type === 'password' ? 'new-password' : undefined}
                 className="border border-border bg-surface rounded-[8px] px-3 py-2.5 text-xs text-text-primary outline-none"
               />
             )}

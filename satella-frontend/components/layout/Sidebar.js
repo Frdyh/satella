@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useAuth } from '../../context/AuthContext';
+import { initials } from '../../lib/initials';
 
 const navItems = [
   { label: 'Inicio', href: '/', icon: HomeIcon },
@@ -41,6 +43,8 @@ function NavLink({ href, label, icon: Icon, active }) {
 }
 
 export default function Sidebar({ open, pathname }) {
+  const { usuario } = useAuth();
+
   return (
     <aside
       className={`fixed top-0 left-0 z-20 h-screen overflow-hidden text-white p-5 flex flex-col gap-1.5 transition-all duration-300 whitespace-nowrap ${
@@ -89,13 +93,13 @@ export default function Sidebar({ open, pathname }) {
         <div className="flex items-center gap-2.5 p-2.5 rounded-[10px] bg-white/6">
           <div className="relative w-8 h-8 shrink-0">
             <div className="w-8 h-8 rounded-full bg-[var(--secondary)] flex items-center justify-center text-xs font-bold text-[#1A1533]">
-              JV
+              {initials(usuario?.nombre)}
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[var(--primary-strong)]" />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold truncate">Juan</div>
-            <div className="text-[11px] text-[var(--accent)]/90 truncate">Administrador</div>
+            <div className="text-[13px] font-semibold truncate">{usuario?.nombre}</div>
+            <div className="text-[11px] text-[var(--accent)]/90 truncate">{usuario?.rol}</div>
           </div>
         </div>
       </div>

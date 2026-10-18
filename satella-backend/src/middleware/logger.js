@@ -1,6 +1,8 @@
 function logger(req, _res, next) {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.url}`);
+  // Oculta el token de sesión si viene en la URL (links de PDF) para no dejarlo en los logs.
+  const url = req.url.replace(/([?&]token=)[^&]*/, '$1***');
+  console.log(`[${timestamp}] ${req.method} ${url}`);
   next();
 }
 
