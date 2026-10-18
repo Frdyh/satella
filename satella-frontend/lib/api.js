@@ -1,3 +1,5 @@
+import { loginUrl } from './redirect';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 const TOKEN_KEY = 'satella-token';
 
@@ -18,12 +20,15 @@ function authHeaders() {
 
 /**
  * Si la API responde 401 con un token guardado, la sesión expiró o es
- * inválida: se borra y se manda al usuario al login.
+ * inválida: se borra y se manda al usuario al login (recordando dónde estaba).
+ * Es una recarga completa a propósito: así se descarta todo el estado de la
+ * sesión vencida. AppShell no compite con esto porque solo redirige cuando
+ * no hay usuario, y la recarga ocurre antes de que eso cambie.
  */
 function handleUnauthorized(res) {
   if (res.status === 401 && getToken()) {
     setToken(null);
-    if (window.location.pathname !== '/login') window.location.href = '/login';
+    if (window.location.pathname !== '/login') window.location.href = loginUrl();
   }
 }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
+import { nextPath } from '../../lib/redirect';
 import Stars from '../../components/ui/Stars';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 
@@ -19,7 +20,7 @@ export default function LoginPage() {
 
   // Si ya hay sesión activa, no tiene sentido mostrar el login.
   useEffect(() => {
-    if (!loading && usuario) router.replace('/');
+    if (!loading && usuario) router.replace(nextPath());
   }, [loading, usuario, router]);
 
   const handleSubmit = async (e) => {
@@ -28,7 +29,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.replace('/');
+      router.replace(nextPath());
     } catch (err) {
       setError(err.message);
     } finally {

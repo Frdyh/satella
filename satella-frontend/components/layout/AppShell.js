@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
+import { loginUrl } from '../../lib/redirect';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
@@ -13,12 +14,12 @@ export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
-  const { usuario, loading } = useAuth();
+  const { usuario, loading, loggedOut } = useAuth();
   const isPublic = PUBLIC_ROUTES.includes(pathname);
 
   useEffect(() => {
-    if (!loading && !usuario && !isPublic) router.replace('/login');
-  }, [loading, usuario, isPublic, router]);
+    if (!loading && !usuario && !isPublic) router.replace(loggedOut ? '/login' : loginUrl());
+  }, [loading, usuario, loggedOut, isPublic, router]);
 
   if (isPublic) return children;
 

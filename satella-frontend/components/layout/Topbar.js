@@ -1,18 +1,11 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import ThemeToggle from '../ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
 import { initials } from '../../lib/initials';
 
 export default function Topbar({ sidebarOpen, onToggleSidebar }) {
-  const router = useRouter();
   const { usuario, logout } = useAuth();
-
-  const handleLogout = () => {
-    logout();
-    router.replace('/login');
-  };
 
   return (
     <div className="h-[60px] border-b border-border flex items-center justify-between px-6 bg-surface">
@@ -44,7 +37,7 @@ export default function Topbar({ sidebarOpen, onToggleSidebar }) {
           </div>
         </div>
         <button
-          onClick={handleLogout}
+          onClick={logout}
           className="w-9 h-9 rounded-full border border-border bg-transparent flex items-center justify-center cursor-pointer text-text-secondary hover:bg-surface-2 transition-colors"
           aria-label="Cerrar sesión"
           title="Cerrar sesión"
