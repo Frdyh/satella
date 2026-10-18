@@ -3,6 +3,7 @@ const pick = require('../utils/pick');
 const { missingFields, isValidEmail } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
 const { hashPassword } = require('../utils/password');
+const { ADMIN_ROLE } = require('../middleware/requireRole');
 
 const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password'];
 const REQUIRED_FIELDS = ['nombre', 'email'];
@@ -81,6 +82,22 @@ async function update(req, res, next) {
   try {
     const { data, error } = buildUsuarioData(req.body, { requirePassword: false });
     if (error) return res.status(400).json({ error });
+
+    // Un administrador puede editar a cualquiera. El resto solo puede editar
+    // su propia cuenta y sin cambiarse el rol (si no, un Despachador podría
+    // cambiarle la contraseña al admin o ascenderse a Administrador).
+    const esAdmin = req.usuario.rol === ADMIN_ROLE;
+    if (!esAdmin) {
+      if (req.usuario.id !== req.params.id) {
+        return res.status(403).json({ error: 'Solo puedes editar tu propia cuenta' });
+      }
+      if (data.rol !== undefined && data.rol !== req.usuario.rol) {
+        return res.status(403).json({ error: 'Solo un administrador puede cambiar roles' });
+      }
+    } else if (req.usuario.id === req.params.id && data.rol !== undefined && data.rol !== ADMIN_ROLE) {
+      return res.status(400).json({ error: 'No puedes quitarte el rol de Administrador a ti mismo' });
+    }
+
     const usuario = await prisma.usuario.update({
       where: { id: req.params.id },
       data,
@@ -92,6 +109,10 @@ async function update(req, res, next) {
 
 async function remove(req, res, next) {
   try {
+    // Evita que el admin se borre a sí mismo y deje el sistema sin administrador.
+    if (req.usuario.id === req.params.id) {
+      return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
+    }
     await prisma.usuario.delete({ where: { id: req.params.id } });
     res.status(204).end();
   } catch (err) { next(err); }
