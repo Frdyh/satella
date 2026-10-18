@@ -6,9 +6,15 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
+const requireAuth = require('./middleware/requireAuth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+if (!process.env.JWT_SECRET) {
+  console.error('Falta JWT_SECRET en el archivo .env (ver .env.example).');
+  process.exit(1);
+}
 
 app.use(helmet());
 app.use(cors({
@@ -25,6 +31,16 @@ app.use('/api', rateLimit({
   legacyHeaders: false,
 }));
 
+// Rutas públicas: no requieren sesión.
+app.use('/api/auth', require('./routes/auth'));
+
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Todo lo que se monte después de esta línea exige un token válido.
+app.use('/api', requireAuth);
+
 app.use('/api/categorias', require('./routes/categorias'));
 app.use('/api/productos', require('./routes/productos'));
 app.use('/api/proveedores', require('./routes/proveedores'));
@@ -33,10 +49,6 @@ app.use('/api/usuarios', require('./routes/usuarios'));
 app.use('/api/pedidos', require('./routes/pedidos'));
 app.use('/api/envios', require('./routes/envios'));
 app.use('/api/reportes', require('./routes/reportes'));
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 app.use(errorHandler);
 

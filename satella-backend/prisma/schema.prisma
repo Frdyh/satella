@@ -55,6 +55,8 @@ model Usuario {
   nombre String @db.VarChar(150)
   rol    String @db.VarChar(50)
   email  String @unique @db.VarChar(150)
+  // "salt:hash" generado con scrypt (ver src/utils/password.js). Nunca se devuelve en la API.
+  passwordHash String? @db.VarChar(255)
 }
 
 model Pedido {

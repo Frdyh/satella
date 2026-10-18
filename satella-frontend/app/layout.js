@@ -2,6 +2,7 @@
 
 import './globals.css';
 import { ThemeProvider } from '../context/ThemeContext';
+import { AuthProvider } from '../context/AuthContext';
 import AppShell from '../components/layout/AppShell';
 
 export default function RootLayout({ children }) {
@@ -17,7 +18,9 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          <AuthProvider>
+            <AppShell>{children}</AppShell>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
