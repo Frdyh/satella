@@ -3,10 +3,7 @@
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '../ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
-
-function initials(nombre = '') {
-  return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
-}
+import { initials } from '../../lib/initials';
 
 export default function Topbar({ sidebarOpen, onToggleSidebar }) {
   const router = useRouter();
