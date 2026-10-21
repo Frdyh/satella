@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const validateId = require('../middleware/validateId');
-const { requireRole, ADMIN_ROLE } = require('../middleware/requireRole');
+const { requireRole, ADMIN_ROLE, OPERADOR_ROLE } = require('../middleware/requireRole');
 const controller = require('../controllers/usuariosController');
 
 const router = Router();
@@ -14,5 +14,7 @@ router.post('/', requireRole(ADMIN_ROLE), controller.create);
 // Editar: el controller decide (admin edita a cualquiera; los demás solo a sí mismos).
 router.put('/:id', controller.update);
 router.delete('/:id', requireRole(ADMIN_ROLE), controller.remove);
+// PIN de WhatsApp para un repartidor: lo genera el administrador o un operario.
+router.post('/:id/pin', requireRole(ADMIN_ROLE, OPERADOR_ROLE), controller.pin);
 
 module.exports = router;

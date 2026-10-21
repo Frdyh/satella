@@ -14,6 +14,9 @@
  *                              { fin: true, olvidar: true } termina y borra la sesión
  *                              y opcionalmente decir: ['texto', …] antes de continuar.
  *
+ * Un paso con aceptaTexto: true muestra opciones pero también acepta texto libre
+ * (entrada.opcion queda en null), por ejemplo "escribe un detalle u Omitir".
+ *
  * `estado` = { perfil, contexto }. El contexto es un objeto que se guarda en
  * SesionChat.contexto entre mensajes (respuestas parciales).
  *
@@ -60,10 +63,10 @@ async function irA(flujo, paso, estado, salida, telefono) {
   await sesiones.guardar(telefono, { flujo: flujo.nombre, paso, contexto: estado.contexto });
 }
 
-/** Empieza el flujo desde su primer paso, con un aviso opcional antes. */
-async function iniciar(flujo, perfil, salida, { aviso } = {}) {
+/** Empieza el flujo desde su primer paso (u otro, con `paso`), con un aviso opcional antes. */
+async function iniciar(flujo, perfil, salida, { aviso, paso } = {}) {
   if (aviso) await salida.texto(aviso);
-  await irA(flujo, flujo.inicio, { perfil, contexto: {} }, salida, perfil.telefono);
+  await irA(flujo, paso || flujo.inicio, { perfil, contexto: {} }, salida, perfil.telefono);
 }
 
 /** Procesa la respuesta del usuario al paso en el que está su sesión. */
@@ -77,7 +80,8 @@ async function continuar(flujo, sesion, mensaje, perfil, salida) {
 
   if (opciones?.length) {
     entrada.opcion = resolverOpcion(mensaje, opciones);
-    if (!entrada.opcion) {
+    const textoLibre = paso.aceptaTexto && mensaje.tipo === 'texto' && mensaje.texto;
+    if (!entrada.opcion && !textoLibre) {
       await salida.texto('No entendí tu respuesta. Elige una de las opciones 👇');
       return irA(flujo, sesion.paso, estado, salida, perfil.telefono);
     }

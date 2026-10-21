@@ -13,6 +13,8 @@
  *   - Una sesión inactiva por más de 30 minutos se reinicia.
  *   - Si cambia el perfil (ej. un número nuevo terminó su registro), se
  *     empieza el flujo del perfil nuevo.
+ *   - Un flujo puede exigir verificación (el del repartidor exige PIN): si
+ *     no está vigente, el mensaje va primero al paso de verificación.
  */
 const prisma = require('../../lib/prisma');
 const sesiones = require('./sesiones');
@@ -55,18 +57,28 @@ async function atender(mensaje, salida) {
   const sesion = await sesiones.cargar(mensaje.telefono);
   const comando = comandoGlobal(mensaje);
 
+  // Algunos flujos arrancan en un paso u otro según la sesión (repartidor: PIN o menú).
+  const paso = flujo.pasoInicial ? flujo.pasoInicial(sesion) : undefined;
+
   if (!sesion || sesion.flujo !== flujo.nombre || sesion.paso === motor.FIN) {
-    return motor.iniciar(flujo, perfil, salida);
+    return motor.iniciar(flujo, perfil, salida, { paso });
   }
   if (sesiones.inactiva(sesion)) {
     return motor.iniciar(flujo, perfil, salida, {
       aviso: 'Tu conversación anterior se cerró por inactividad. Empecemos de nuevo.',
+      paso,
     });
   }
   if (comando === 'cancelar') {
-    return motor.iniciar(flujo, perfil, salida, { aviso: 'Listo, cancelé lo que estabas haciendo.' });
+    return motor.iniciar(flujo, perfil, salida, { aviso: 'Listo, cancelé lo que estabas haciendo.', paso });
   }
-  if (comando === 'menu') return motor.iniciar(flujo, perfil, salida);
+  if (comando === 'menu') return motor.iniciar(flujo, perfil, salida, { paso });
+  if (flujo.requiereVerificacion?.(sesion)) {
+    return motor.iniciar(flujo, perfil, salida, {
+      aviso: 'Por seguridad, tu verificación venció. Vuelve a escribir un PIN.',
+      paso: flujo.inicio,
+    });
+  }
 
   return motor.continuar(flujo, sesion, mensaje, perfil, salida);
 }

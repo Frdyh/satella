@@ -35,10 +35,11 @@ test('número desconocido → flujo de registro (empieza por el consentimiento)'
   assert.equal(sesionDe(NUEVO).paso, 'consentimiento');
 });
 
-test('repartidor → su propio flujo (sin funciones antes del PIN)', async () => {
+test('repartidor → su propio flujo, que empieza pidiendo el PIN', async () => {
   const [m] = await escribir(DIEGO, 'hola');
-  assert.match(m.text.body, /Hola Diego/);
+  assert.match(m.text.body, /Hola Diego.*PIN de 6 dígitos/s);
   assert.equal(sesionDe(DIEGO).flujo, 'repartidor');
+  assert.equal(sesionDe(DIEGO).paso, 'pin');
 });
 
 test('operaria → mensaje informativo, y queda abierta su ventana de 24 h', async () => {

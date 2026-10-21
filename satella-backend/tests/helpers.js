@@ -17,9 +17,31 @@ const sesionesChat = [];
 const consentimientos = [];
 const productos = [];
 const pedidos = [];
+const pines = [];
+const envios = [];
+const reportes = [];
+
+// Envío con su pedido y cliente, como el include de los flujos.
+const conPedido = (e) => {
+  const pedido = pedidos.find((p) => p.id === e.pedidoId) || null;
+  return { ...e, pedido: pedido && { ...pedido, cliente: clientes.find((c) => c.id === pedido.clienteId) || null } };
+};
 
 // findUnique por cualquier campo único (id, email, telefono…).
 const findBy = (rows, where) => rows.find((x) => Object.entries(where).every(([k, v]) => x[k] === v));
+
+// Filtro estilo Prisma para lo que usan los flujos: igualdad, null, gt, gte/lt e in.
+function cumple(row, where = {}) {
+  return Object.entries(where).every(([k, cond]) => {
+    const v = row[k];
+    if (cond === null || typeof cond !== 'object' || cond instanceof Date) return v === cond || (cond === null && v == null);
+    if ('in' in cond && !cond.in.includes(v)) return false;
+    if ('gt' in cond && !(v > cond.gt)) return false;
+    if ('gte' in cond && !(v >= cond.gte)) return false;
+    if ('lt' in cond && !(v < cond.lt)) return false;
+    return true;
+  });
+}
 
 function pickSelect(u, select) {
   if (!u || !select) return u;
@@ -96,6 +118,24 @@ const fakePrisma = {
       .slice(0, take)
       .map((p) => ({ ...p, envio: p.envio || null, items: p.items.map((i) => ({ ...i, producto: productos.find((x) => x.id === i.productoId) })) })),
   },
+  pinTemporal: {
+    create: async ({ data }) => { const p = { id: pines.length + 1, usadoEn: null, creadoEn: new Date(), ...data }; pines.push(p); return { ...p }; },
+    findMany: async ({ where }) => pines.filter((p) => cumple(p, where)).sort((a, b) => b.creadoEn - a.creadoEn).map((p) => ({ ...p })),
+    updateMany: async ({ where, data }) => { const rows = pines.filter((p) => cumple(p, where)); rows.forEach((p) => Object.assign(p, data)); return { count: rows.length }; },
+  },
+  envio: {
+    findMany: async ({ where, orderBy }) => {
+      let rows = envios.filter((e) => cumple(e, where));
+      if (orderBy?.ventanaHoraria) rows = [...rows].sort((a, b) => a.ventanaHoraria.localeCompare(b.ventanaHoraria));
+      return rows.map(conPedido);
+    },
+    findFirst: async ({ where }) => { const e = envios.find((x) => cumple(x, where)); return e ? conPedido(e) : null; },
+    update: async ({ where, data }) => { const e = findBy(envios, where); Object.assign(e, data); return { ...e }; },
+    updateMany: async ({ where, data }) => { const rows = envios.filter((e) => cumple(e, where)); rows.forEach((e) => Object.assign(e, data)); return { count: rows.length }; },
+  },
+  reporteProblema: {
+    create: async ({ data }) => { const r = { id: reportes.length + 1, estado: 'abierto', creadoEn: new Date(), ...data }; reportes.push(r); return { ...r }; },
+  },
   consentimientoDatos: {
     create: async ({ data }) => {
       const c = { id: consentimientos.length + 1, ...data };
@@ -112,6 +152,12 @@ const fakePrisma = {
       if (s) Object.assign(s, update, { actualizadaEn: new Date() });
       else sesionesChat.push((s = { id: sesionesChat.length + 1, intentosFallidos: 0, ...create, actualizadaEn: new Date() }));
       // Copia, como Prisma: el llamador no comparte el objeto guardado.
+      return JSON.parse(JSON.stringify(s));
+    },
+    update: async ({ where, data }) => {
+      const s = findBy(sesionesChat, where);
+      if (!s) throw Object.assign(new Error('no existe'), { code: 'P2025' });
+      Object.assign(s, data);
       return JSON.parse(JSON.stringify(s));
     },
     deleteMany: async ({ where }) => {
@@ -155,6 +201,9 @@ function resetUsuarios() {
     { id: 3, nombre: 'Arequipe 250g', unidad: 'unidad', precio: 6500, stockActual: 0 },
   );
   pedidos.length = 0;
+  pines.length = 0;
+  envios.length = 0;
+  reportes.length = 0;
 }
 
 /** Arranca la app en un puerto aleatorio y devuelve { baseUrl, close }. */
@@ -216,4 +265,4 @@ async function esperar(condicion, ms = 2000) {
   }
 }
 
-module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, consentimientos, productos, pedidos, resetUsuarios, startServer, call, esperar, crearChat, textos, PASSWORD };
+module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, consentimientos, productos, pedidos, pines, envios, reportes, resetUsuarios, startServer, call, esperar, crearChat, textos, PASSWORD };

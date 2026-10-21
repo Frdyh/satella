@@ -3,7 +3,8 @@ const pick = require('../utils/pick');
 const { missingFields, isValidEmail } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
 const { hashPassword } = require('../utils/password');
-const { ADMIN_ROLE } = require('../middleware/requireRole');
+const { ADMIN_ROLE, REPARTIDOR_ROLE } = require('../middleware/requireRole');
+const { generarPin } = require('../services/whatsapp/pin');
 const { prepararTelefono } = require('../services/telefonos');
 
 const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password', 'telefono'];
@@ -124,4 +125,21 @@ async function remove(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, remove, PUBLIC_SELECT };
+/**
+ * POST /api/usuarios/:id/pin — genera un PIN temporal para que un repartidor
+ * se identifique en el canal de WhatsApp. El PIN se devuelve en claro solo en
+ * esta respuesta; en la base queda únicamente su hash.
+ */
+async function pin(req, res, next) {
+  try {
+    const usuario = await prisma.usuario.findUnique({ where: { id: req.params.id }, select: PUBLIC_SELECT });
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (usuario.rol !== REPARTIDOR_ROLE) return res.status(400).json({ error: 'Solo los repartidores usan PIN en WhatsApp' });
+    if (!usuario.telefono) return res.status(400).json({ error: 'El repartidor no tiene teléfono registrado' });
+    const { pin: valor, expiraEn } = await generarPin(usuario.id);
+    res.set('Cache-Control', 'no-store');
+    res.status(201).json({ pin: valor, expiraEn, usuario: { id: usuario.id, nombre: usuario.nombre } });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, remove, pin, PUBLIC_SELECT };
