@@ -248,6 +248,11 @@ Definido en Prisma (`satella-backend/prisma/schema.prisma`):
 > | Crear (`POST`) y eliminar (`DELETE`) | ✅ (no puede borrarse a sí mismo) | ❌ |
 > | Editar (`PUT`) | ✅ a cualquiera, incluidos rol y contraseña (no puede quitarse su propio rol) | Solo su propia cuenta y sin cambiar su rol |
 
+> **Stock de los pedidos** (`src/services/inventario.js`): un pedido tiene su stock apartado **solo mientras está `confirmado`**.
+> - Al pasar a `confirmado` se descuenta el stock de todos sus productos, en una transacción. Si alguno no alcanza, se rechaza el cambio con `409` y un mensaje claro ("Stock insuficiente de X: hay N y el pedido necesita M"), y no se descuenta nada.
+> - Al **cancelar** un pedido confirmado (o devolverlo a `pendiente`, o eliminarlo) **se devuelve el stock**.
+> - Los pedidos que llegan por WhatsApp quedan `pendiente` y no apartan stock: si dos piden el último producto, gana el que el personal confirme primero. Confirmar dos veces el mismo pedido, o dos pedidos a la vez, nunca descuenta de más ni deja el stock en negativo.
+
 > Los endpoints `GET` de listado aceptan paginación opcional (`?page=1&limit=20`, responde con header `X-Total-Count`) y filtros como `?search=`, `?estado=`, `?categoriaId=`, `?proveedorId=`, `?clienteId=` según la entidad.
 
 ## Vistas del frontend
@@ -346,6 +351,9 @@ WhatsApp es **otro cliente de esta misma API**, igual que el frontend: Meta llam
 |--------|------|-------------|
 | GET  | `/api/whatsapp/webhook` | Verificación inicial de Meta (devuelve `hub.challenge` si `hub.verify_token` coincide con `WA_VERIFY_TOKEN`) |
 | POST | `/api/whatsapp/webhook` | Mensajes entrantes. Exige la firma `X-Hub-Signature-256` (HMAC del cuerpo con `WA_APP_SECRET`) |
+| GET  | `/api/alertas?estado=abierto` | Problemas reportados por los repartidores desde WhatsApp (`abierto` o `atendido`) |
+| PUT  | `/api/alertas/:id/atender` | Marca una alerta como atendida (Administrador u Operador) |
+| POST | `/api/usuarios/:id/pin` | Genera el PIN temporal de un repartidor (Administrador u Operador). El PIN se devuelve en claro solo en esta respuesta |
 | POST | `/api/whatsapp/simulador` | Solo con `ENABLE_WA_SIMULATOR=true` y sesión del personal. Body `{ telefono, texto }` o `{ telefono, opcionId }`; responde con los mensajes que el bot habría enviado |
 
 Variables en `satella-backend/.env`: ver la sección "Canal de WhatsApp" de `.env.example`. Para probar sin Meta, importa en Postman `docs/postman/satella-whatsapp.postman_collection.json`: firma los mensajes automáticamente igual que Meta.

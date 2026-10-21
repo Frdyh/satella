@@ -76,7 +76,8 @@ async function continuar(flujo, sesion, mensaje, perfil, salida) {
 
   const estado = { perfil, contexto: { ...(sesion.contexto || {}) } };
   const opciones = estado.contexto._opciones;
-  const entrada = { mensaje, texto: mensaje.texto, opcion: null };
+  // salida: para pasos que deben escribirle a otra persona (ej. alertas al operario).
+  const entrada = { mensaje, texto: mensaje.texto, opcion: null, salida };
 
   if (opciones?.length) {
     entrada.opcion = resolverOpcion(mensaje, opciones);

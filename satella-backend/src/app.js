@@ -57,6 +57,8 @@ app.use('/api/usuarios', require('./routes/usuarios'));
 app.use('/api/pedidos', require('./routes/pedidos'));
 app.use('/api/envios', require('./routes/envios'));
 app.use('/api/reportes', require('./routes/reportes'));
+// Problemas que reportan los repartidores por WhatsApp (ReporteProblema).
+app.use('/api/alertas', require('./routes/alertas'));
 
 app.use(errorHandler);
 

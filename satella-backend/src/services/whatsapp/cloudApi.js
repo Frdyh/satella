@@ -116,8 +116,7 @@ async function enviarACloud(payload) {
  * Crea la "salida" de una conversación hacia `telefono`.
  * modo: 'cloud' (por defecto) o 'simulador'.
  */
-function crearSalida(telefono, { modo = 'cloud' } = {}) {
-  const enviados = [];
+function crearSalida(telefono, { modo = 'cloud', enviados = [] } = {}) {
   const enviar = async (payload) => {
     enviados.push(payload);
     if (modo === 'simulador') return { enviado: true };
@@ -130,6 +129,10 @@ function crearSalida(telefono, { modo = 'cloud' } = {}) {
   };
   return {
     enviados,
+    modo,
+    // Salida hacia otro teléfono por el mismo canal (ej. avisar al operario):
+    // en el simulador, ese aviso también queda en la respuesta en vez de ir a Meta.
+    para: (otroTelefono) => crearSalida(otroTelefono, { modo, enviados }),
     texto: (texto) => enviar(payloadTexto(telefono, texto)),
     botones: (texto, botones) => enviar(payloadBotones(telefono, texto, botones)),
     lista: (texto, textoBoton, filas) => enviar(payloadLista(telefono, texto, textoBoton, filas)),

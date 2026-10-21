@@ -183,7 +183,7 @@ module.exports = {
         texto: 'Si quieres, escribe un detalle (ej. "nadie abre, llamé 2 veces"). Si no, toca *Omitir*.',
         botones: [{ id: 'det:omitir', titulo: 'Omitir' }],
       }),
-      recibir: async ({ opcion, texto }, { perfil, contexto }) => {
+      recibir: async ({ opcion, texto, salida }, { perfil, contexto }) => {
         const detalle = opcion ? null : limpiarTexto(texto, MAX_DETALLE) || null;
         const envio = await envioPropio(contexto.envioId, perfil.usuario.id);
         if (!envio) return { decir: ['Ese envío ya no está asignado a ti.'], ir: 'menu' };
@@ -195,8 +195,9 @@ module.exports = {
         if (contexto.tipo !== 'otro' && envio.estado !== 'entregado') {
           await prisma.envio.update({ where: { id: envio.id }, data: { estado: 'retraso' } });
         }
-        await alertas.problemaReportado(reporte, { envio, repartidor: perfil.usuario });
-        return { decir: [`📝 Reporte #${reporte.id} registrado. El equipo ya puede verlo en el panel.`], ir: 'menu' };
+        const avisados = await alertas.problemaReportado(reporte, { envio, repartidor: perfil.usuario, salida });
+        const aviso = avisados ? ` y avisé por WhatsApp a ${avisados === 1 ? 'un operario' : `${avisados} operarios`}` : '';
+        return { decir: [`📝 Reporte #${reporte.id} registrado. El equipo ya puede verlo en el panel${aviso}.`], ir: 'menu' };
       },
     },
   },

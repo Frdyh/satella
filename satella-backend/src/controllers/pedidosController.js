@@ -3,6 +3,7 @@ const sanitize = require('../utils/sanitize');
 const pick = require('../utils/pick');
 const { missingFields, isValidNumber, isValidEnum } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
+const inventario = require('../services/inventario');
 
 const ESTADOS_PEDIDO = ['pendiente', 'confirmado', 'cancelado'];
 
@@ -98,13 +99,19 @@ async function create(req, res, next) {
     if (error) return res.status(400).json({ error });
 
     // Prisma permite "Nested Writes": crea el Pedido y los PedidoItems
-    // al mismo tiempo, de forma transaccional.
-    const pedido = await prisma.pedido.create({
-      data: {
-        ...data,
-        items: items ? { create: items.map((item) => pick(item, ALLOWED_ITEM_FIELDS)) } : undefined,
-      },
-      include: includeRelations,
+    // al mismo tiempo. Si se crea ya confirmado, en la misma transacción se
+    // descuenta el stock (services/inventario.js).
+    const itemsData = (items || []).map((item) => {
+      const i = pick(item, ALLOWED_ITEM_FIELDS);
+      return { productoId: Number(i.productoId), cantidad: Number(i.cantidad) };
+    });
+    const pedido = await prisma.$transaction(async (tx) => {
+      const creado = await tx.pedido.create({
+        data: { ...data, items: itemsData.length ? { create: itemsData } : undefined },
+        include: includeRelations,
+      });
+      await inventario.cambioDeEstado(tx, itemsData, null, creado.estado);
+      return creado;
     });
     res.status(201).json(pedido);
   } catch (err) { next(err); }
@@ -117,10 +124,22 @@ async function update(req, res, next) {
     if (data.estado === null) delete data.estado;
     const error = await validatePedido(data, items);
     if (error) return res.status(400).json({ error });
-    const pedido = await prisma.pedido.update({
-      where: { id: req.params.id },
-      data,
-      include: includeRelations,
+
+    const pedido = await prisma.$transaction(async (tx) => {
+      const actual = await tx.pedido.findUnique({ where: { id: req.params.id }, include: { items: true } });
+      if (!actual) throw Object.assign(new Error('Pedido no encontrado'), { code: 'P2025' });
+
+      if (data.estado && data.estado !== actual.estado) {
+        // El cambio de estado solo se aplica si nadie lo cambió mientras tanto:
+        // así dos personas no pueden confirmar (y descontar) el mismo pedido dos veces.
+        const { count } = await tx.pedido.updateMany({
+          where: { id: actual.id, estado: actual.estado },
+          data: { estado: data.estado },
+        });
+        if (!count) throw Object.assign(new Error('El pedido cambió mientras lo editabas. Recarga e intenta de nuevo.'), { status: 409 });
+        await inventario.cambioDeEstado(tx, actual.items, actual.estado, data.estado);
+      }
+      return tx.pedido.update({ where: { id: actual.id }, data, include: includeRelations });
     });
     res.json(pedido);
   } catch (err) { next(err); }
@@ -128,7 +147,13 @@ async function update(req, res, next) {
 
 async function remove(req, res, next) {
   try {
-    await prisma.pedido.delete({ where: { id: req.params.id } });
+    await prisma.$transaction(async (tx) => {
+      const actual = await tx.pedido.findUnique({ where: { id: req.params.id }, include: { items: true } });
+      if (!actual) throw Object.assign(new Error('Pedido no encontrado'), { code: 'P2025' });
+      // Borrar un pedido confirmado devuelve su stock.
+      await inventario.cambioDeEstado(tx, actual.items, actual.estado, null);
+      await tx.pedido.delete({ where: { id: actual.id } });
+    });
     res.status(204).end();
   } catch (err) { next(err); }
 }

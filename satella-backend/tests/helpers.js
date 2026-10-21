@@ -35,6 +35,8 @@ function cumple(row, where = {}) {
   return Object.entries(where).every(([k, cond]) => {
     const v = row[k];
     if (cond === null || typeof cond !== 'object' || cond instanceof Date) return v === cond || (cond === null && v == null);
+    if ('not' in cond && v === cond.not) return false;
+    if ('not' in cond && cond.not === null && v == null) return false;
     if ('in' in cond && !cond.in.includes(v)) return false;
     if ('gt' in cond && !(v > cond.gt)) return false;
     if ('gte' in cond && !(v >= cond.gte)) return false;
@@ -58,7 +60,10 @@ const fakePrisma = {
       const u = findBy(usuarios, where);
       return u ? pickSelect(u, select) : null;
     },
-    findMany: async ({ select } = {}) => usuarios.map((u) => pickSelect(u, select)),
+    findMany: async ({ where = {}, select } = {}) => {
+      const { OR, ...resto } = where;
+      return usuarios.filter((u) => cumple(u, resto)).map((u) => pickSelect(u, select));
+    },
     count: async () => usuarios.length,
     create: async ({ data, select }) => {
       if (usuarios.some((x) => x.email === data.email)) throw Object.assign(new Error('dup'), { code: 'P2002' });
@@ -104,14 +109,27 @@ const fakePrisma = {
       return rows.map((p) => ({ ...p }));
     },
     findUnique: async ({ where }) => { const p = findBy(productos, where); return p ? { ...p } : null; },
+    updateMany: async ({ where, data }) => {
+      const rows = productos.filter((p) => cumple(p, where));
+      for (const p of rows) {
+        const op = data.stockActual;
+        if (op?.decrement !== undefined) p.stockActual -= op.decrement;
+        else if (op?.increment !== undefined) p.stockActual += op.increment;
+      }
+      return { count: rows.length };
+    },
   },
   pedido: {
     create: async ({ data }) => {
       const { items, ...resto } = data;
-      const p = { id: pedidos.length + 1, fecha: new Date(), ...resto, items: items.create.map((i) => ({ ...i })) };
+      const p = { id: Math.max(0, ...pedidos.map((x) => x.id)) + 1, fecha: new Date(), estado: 'pendiente', ...resto, items: (items?.create || []).map((i) => ({ ...i })) };
       pedidos.push(p);
       return { ...p };
     },
+    findUnique: async ({ where }) => { const p = findBy(pedidos, where); return p ? { ...p, items: p.items.map((i) => ({ ...i })) } : null; },
+    updateMany: async ({ where, data }) => { const rows = pedidos.filter((p) => cumple(p, where)); rows.forEach((p) => Object.assign(p, data)); return { count: rows.length }; },
+    update: async ({ where, data }) => { const p = findBy(pedidos, where); Object.assign(p, data); return { ...p }; },
+    delete: async ({ where }) => { const i = pedidos.findIndex((p) => p.id === where.id); return pedidos.splice(i, 1)[0]; },
     findMany: async ({ where, take }) => pedidos
       .filter((p) => p.clienteId === where.clienteId)
       .sort((a, b) => b.fecha - a.fecha)
@@ -134,7 +152,12 @@ const fakePrisma = {
     updateMany: async ({ where, data }) => { const rows = envios.filter((e) => cumple(e, where)); rows.forEach((e) => Object.assign(e, data)); return { count: rows.length }; },
   },
   reporteProblema: {
-    create: async ({ data }) => { const r = { id: reportes.length + 1, estado: 'abierto', creadoEn: new Date(), ...data }; reportes.push(r); return { ...r }; },
+    create: async ({ data }) => { const r = { id: reportes.length + 1, estado: 'abierto', creadoEn: new Date(), atendidoPorId: null, ...data }; reportes.push(r); return { ...r }; },
+    findMany: async ({ where }) => reportes.filter((r) => cumple(r, where)).sort((a, b) => b.creadoEn - a.creadoEn)
+      .map((r) => ({ ...r, envio: conPedido(envios.find((e) => e.id === r.envioId) || {}), usuario: usuarios.find((u) => u.id === r.usuarioId), atendidoPor: usuarios.find((u) => u.id === r.atendidoPorId) || null })),
+    count: async ({ where }) => reportes.filter((r) => cumple(r, where)).length,
+    findUnique: async ({ where }) => { const r = findBy(reportes, where); return r ? { ...r, atendidoPor: usuarios.find((u) => u.id === r.atendidoPorId) || null } : null; },
+    updateMany: async ({ where, data }) => { const rows = reportes.filter((r) => cumple(r, where)); rows.forEach((r) => Object.assign(r, data)); return { count: rows.length }; },
   },
   consentimientoDatos: {
     create: async ({ data }) => {
@@ -143,8 +166,20 @@ const fakePrisma = {
       return c;
     },
   },
-  // Sin rollback real: suficiente para probar el camino feliz y los conflictos.
-  $transaction: async (fn) => fn(fakePrisma),
+  // Como en MySQL: si la transacción falla, se deshacen sus cambios.
+  $transaction: async (fn) => {
+    const tablas = [productos, pedidos, clientes, consentimientos, envios, reportes];
+    const copia = tablas.map((t) => JSON.parse(JSON.stringify(t)));
+    try {
+      return await fn(fakePrisma);
+    } catch (err) {
+      tablas.forEach((t, i) => {
+        // JSON pierde las fechas: se restauran como Date.
+        t.splice(0, t.length, ...copia[i].map((r) => ({ ...r, ...(r.fecha ? { fecha: new Date(r.fecha) } : {}), ...(r.creadoEn ? { creadoEn: new Date(r.creadoEn) } : {}) })));
+      });
+      throw err;
+    }
+  },
   sesionChat: {
     findUnique: async ({ where }) => { const s = findBy(sesionesChat, where); return s ? JSON.parse(JSON.stringify(s)) : null; },
     upsert: async ({ where, create, update }) => {
