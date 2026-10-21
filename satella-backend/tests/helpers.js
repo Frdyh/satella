@@ -15,6 +15,8 @@ const clientes = [];
 const mensajesProcesados = [];
 const sesionesChat = [];
 const consentimientos = [];
+const productos = [];
+const pedidos = [];
 
 // findUnique por cualquier campo único (id, email, telefono…).
 const findBy = (rows, where) => rows.find((x) => Object.entries(where).every(([k, v]) => x[k] === v));
@@ -65,6 +67,34 @@ const fakePrisma = {
       clientes.push(c);
       return { ...c };
     },
+    update: async ({ where, data }) => {
+      const c = findBy(clientes, where);
+      if (!c) throw Object.assign(new Error('no existe'), { code: 'P2025' });
+      Object.assign(c, data);
+      return { ...c };
+    },
+  },
+  producto: {
+    findMany: async ({ where = {}, orderBy } = {}) => {
+      let rows = productos.filter((p) => (where.stockActual?.gt === undefined || p.stockActual > where.stockActual.gt)
+        && (!where.id?.in || where.id.in.includes(p.id)));
+      if (orderBy?.nombre) rows = [...rows].sort((a, b) => a.nombre.localeCompare(b.nombre));
+      return rows.map((p) => ({ ...p }));
+    },
+    findUnique: async ({ where }) => { const p = findBy(productos, where); return p ? { ...p } : null; },
+  },
+  pedido: {
+    create: async ({ data }) => {
+      const { items, ...resto } = data;
+      const p = { id: pedidos.length + 1, fecha: new Date(), ...resto, items: items.create.map((i) => ({ ...i })) };
+      pedidos.push(p);
+      return { ...p };
+    },
+    findMany: async ({ where, take }) => pedidos
+      .filter((p) => p.clienteId === where.clienteId)
+      .sort((a, b) => b.fecha - a.fecha)
+      .slice(0, take)
+      .map((p) => ({ ...p, envio: p.envio || null, items: p.items.map((i) => ({ ...i, producto: productos.find((x) => x.id === i.productoId) })) })),
   },
   consentimientoDatos: {
     create: async ({ data }) => {
@@ -114,10 +144,17 @@ function resetUsuarios() {
     { id: 4, nombre: 'Diego Ramírez', rol: 'Repartidor', email: 'diego@satella.local', passwordHash: hashPassword(PASSWORD), telefono: '573001112233' },
   );
   clientes.length = 0;
-  clientes.push({ id: 1, nombre: 'Laura Gómez', telefono: '573114441001' });
+  clientes.push({ id: 1, nombre: 'Laura Gómez', telefono: '573114441001', direccion: 'Calle 12 #5-30', ciudad: 'Fusagasugá' });
   mensajesProcesados.length = 0;
   sesionesChat.length = 0;
   consentimientos.length = 0;
+  productos.length = 0;
+  productos.push(
+    { id: 1, nombre: 'Leche entera 1L', unidad: 'litro', precio: 4500, stockActual: 50 },
+    { id: 2, nombre: 'Queso campesino', unidad: 'libra', precio: 12000, stockActual: 2 },
+    { id: 3, nombre: 'Arequipe 250g', unidad: 'unidad', precio: 6500, stockActual: 0 },
+  );
+  pedidos.length = 0;
 }
 
 /** Arranca la app en un puerto aleatorio y devuelve { baseUrl, close }. */
@@ -179,4 +216,4 @@ async function esperar(condicion, ms = 2000) {
   }
 }
 
-module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, consentimientos, resetUsuarios, startServer, call, esperar, crearChat, textos, PASSWORD };
+module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, consentimientos, productos, pedidos, resetUsuarios, startServer, call, esperar, crearChat, textos, PASSWORD };

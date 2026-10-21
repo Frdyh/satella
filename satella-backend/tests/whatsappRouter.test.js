@@ -71,15 +71,15 @@ test('si el perfil cambia (ej. el número nuevo se registró), arranca el flujo 
 
 test('elegir una opción del menú por botón/lista', async () => {
   await escribir(LAURA, 'hola');
-  const r = textos(await escribir(LAURA, { opcionId: 'menu:pedido', opcionTexto: 'Hacer pedido' }));
-  assert.match(r[0], /disponible muy pronto/);
+  const [lista] = await escribir(LAURA, { opcionId: 'menu:pedido', opcionTexto: 'Hacer pedido' });
+  assert.match(lista.interactive.body.text, /Qué producto quieres/);
 });
 
 test('también se puede responder escribiendo el número o el nombre de la opción', async () => {
   await escribir(LAURA, 'hola');
-  assert.match(textos(await escribir(LAURA, '2'))[0], /disponible muy pronto/);
+  assert.match(textos(await escribir(LAURA, '2'))[0], /Todavía no tienes pedidos/);
   await escribir(LAURA, 'menu');
-  assert.match(textos(await escribir(LAURA, 'Mis Pedidos'))[0], /disponible muy pronto/);
+  assert.match(textos(await escribir(LAURA, 'Mis Pedidos'))[0], /Todavía no tienes pedidos/);
 });
 
 test('un id que no se ofreció se rechaza y se repite el menú', async () => {
@@ -132,12 +132,12 @@ test('sesión inactiva más de 30 minutos → avisa y empieza de nuevo', async (
 test('con menos de 30 minutos de inactividad la conversación sigue', async () => {
   await escribir(LAURA, 'hola');
   sesionDe(LAURA).actualizadaEn = new Date(Date.now() - 29 * 60 * 1000);
-  assert.match(textos(await escribir(LAURA, '2'))[0], /disponible muy pronto/);
+  assert.match(textos(await escribir(LAURA, '2'))[0], /Todavía no tienes pedidos/);
 });
 
 test('después de terminar una opción, el siguiente mensaje vuelve a mostrar el menú', async () => {
   await escribir(LAURA, 'hola');
-  await escribir(LAURA, '1');
+  await escribir(LAURA, '2');
   const [m] = await escribir(LAURA, 'gracias');
   assert.equal(m.interactive.type, 'list');
 });

@@ -114,7 +114,7 @@ test('simulador: acepta respuestas de lista o botón', async () => {
   await api('POST', '/whatsapp/simulador', { token: token(), body: { telefono: '3114441001', texto: 'hola' } });
   const { body } = await api('POST', '/whatsapp/simulador', { token: token(), body: { telefono: '3114441001', opcionId: 'menu:pedido', opcionTexto: 'Hacer pedido' } });
   assert.equal(body.resultado, 'procesado');
-  assert.equal(body.respuestas[0].type, 'text');
+  assert.match(body.respuestas[0].interactive.body.text, /Qué producto quieres/);
 });
 
 test('simulador: repetir el wamid → duplicado, sin respuesta', async () => {
