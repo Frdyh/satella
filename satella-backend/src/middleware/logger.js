@@ -1,7 +1,8 @@
 function logger(req, _res, next) {
   const timestamp = new Date().toISOString();
-  // Oculta el token de sesión si viene en la URL (links de PDF) para no dejarlo en los logs.
-  const url = req.url.replace(/([?&]token=)[^&]*/, '$1***');
+  // Oculta secretos que pueden venir en la URL: el token de sesión (links de PDF)
+  // y el verify token de la verificación del webhook de WhatsApp.
+  const url = req.url.replace(/([?&](?:token|hub\.verify_token)=)[^&]*/g, '$1***');
   console.log(`[${timestamp}] ${req.method} ${url}`);
   next();
 }

@@ -25,4 +25,20 @@ function sanitize(body, { dateFields = [], intFields = [] } = {}) {
   return cleaned;
 }
 
+/**
+ * Limpia texto libre que llega de afuera (por ejemplo, mensajes de WhatsApp):
+ * quita caracteres de control, colapsa espacios y corta a `max` caracteres.
+ * Devuelve '' si no hay texto.
+ */
+function limpiarTexto(valor, max = 500) {
+  if (valor === undefined || valor === null) return '';
+  return String(valor)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
 module.exports = sanitize;
+module.exports.limpiarTexto = limpiarTexto;

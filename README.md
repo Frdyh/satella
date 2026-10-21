@@ -338,6 +338,18 @@ También hay accesos directos que hacen lo mismo con doble clic (instalan depend
 - **`npx prisma migrate dev` pide crear la base de datos** — confirma que ya corriste el paso 2 y que el usuario de MySQL tiene permisos sobre `satella_db`.
 - **Puertos 3000 o 4000 ocupados** — cambia `PORT` en `satella-backend/.env` (y `NEXT_PUBLIC_API_URL` en el frontend) o cierra el proceso que los esté usando.
 
+## Canal de WhatsApp (en construcción)
+
+WhatsApp es **otro cliente de esta misma API**, igual que el frontend: Meta llama por HTTP a `/api/whatsapp/webhook` y el código vive en `satella-backend/src` (mismo proceso, misma base de datos). Se está implementando por fases según el plan del proyecto; esta sección se completará al terminar.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/api/whatsapp/webhook` | Verificación inicial de Meta (devuelve `hub.challenge` si `hub.verify_token` coincide con `WA_VERIFY_TOKEN`) |
+| POST | `/api/whatsapp/webhook` | Mensajes entrantes. Exige la firma `X-Hub-Signature-256` (HMAC del cuerpo con `WA_APP_SECRET`) |
+| POST | `/api/whatsapp/simulador` | Solo con `ENABLE_WA_SIMULATOR=true` y sesión del personal. Body `{ telefono, texto }` o `{ telefono, opcionId }`; responde con los mensajes que el bot habría enviado |
+
+Variables en `satella-backend/.env`: ver la sección "Canal de WhatsApp" de `.env.example`. Para probar sin Meta, importa en Postman `docs/postman/satella-whatsapp.postman_collection.json`: firma los mensajes automáticamente igual que Meta.
+
 ## Tests
 
 El backend tiene tests automáticos de autenticación y permisos (`satella-backend/tests/`), escritos con el runner que ya trae Node (`node:test`), sin dependencias extra. **No necesitan MySQL**: reemplazan Prisma por una base de datos en memoria.

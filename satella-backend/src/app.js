@@ -17,8 +17,20 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   exposedHeaders: ['X-Total-Count'],
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  // El webhook de WhatsApp necesita los bytes exactos del cuerpo para validar
+  // la firma de Meta (middleware/verifyMetaSignature.js).
+  verify: (req, _res, buf) => {
+    if (req.originalUrl.startsWith('/api/whatsapp/webhook')) req.rawBody = buf;
+  },
+}));
 app.use(logger);
+
+// Canal de WhatsApp: otro cliente de esta misma API. Va antes del límite global
+// porque tiene su propio límite por teléfono (services/whatsapp/entrada.js) y
+// todo el tráfico de Meta llega desde las mismas IPs.
+app.use('/api/whatsapp', require('./routes/whatsapp'));
 
 app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,

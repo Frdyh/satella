@@ -12,6 +12,7 @@ const { hashPassword } = require('../src/utils/password');
 
 const usuarios = [];
 const clientes = [];
+const mensajesProcesados = [];
 
 // findUnique por cualquier campo único (id, email, telefono…).
 const findBy = (rows, where) => rows.find((x) => Object.entries(where).every(([k, v]) => x[k] === v));
@@ -57,6 +58,13 @@ const fakePrisma = {
       return c ? pickSelect(c, select) : null;
     },
   },
+  mensajeProcesado: {
+    create: async ({ data }) => {
+      if (mensajesProcesados.some((m) => m.wamid === data.wamid)) throw Object.assign(new Error('dup'), { code: 'P2002' });
+      mensajesProcesados.push({ ...data, procesadoEn: new Date() });
+      return data;
+    },
+  },
 };
 
 const prismaPath = path.join(__dirname, '../src/lib/prisma.js');
@@ -75,6 +83,7 @@ function resetUsuarios() {
   );
   clientes.length = 0;
   clientes.push({ id: 1, nombre: 'Laura Gómez', telefono: '573114441001' });
+  mensajesProcesados.length = 0;
 }
 
 /** Arranca la app en un puerto aleatorio y devuelve { baseUrl, close }. */
@@ -92,18 +101,30 @@ async function startServer() {
   };
 }
 
-/** fetch + JSON: devuelve { status, body }. */
-async function call(baseUrl, method, path, { token, body } = {}) {
+/** fetch + JSON: devuelve { status, body }. `raw` manda el cuerpo tal cual (string). */
+async function call(baseUrl, method, path, { token, body, raw, headers = {} } = {}) {
   const res = await fetch(baseUrl + path, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: raw !== undefined ? raw : (body ? JSON.stringify(body) : undefined),
   });
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
+  let parsed = text;
+  try { parsed = text ? JSON.parse(text) : null; } catch { /* texto plano */ }
+  return { status: res.status, body: parsed };
 }
 
-module.exports = { usuarios, clientes, resetUsuarios, startServer, call, PASSWORD };
+/** Espera hasta que `condicion()` sea true (para trabajo que corre después de responder). */
+async function esperar(condicion, ms = 2000) {
+  const hasta = Date.now() + ms;
+  while (!condicion()) {
+    if (Date.now() > hasta) throw new Error('Tiempo de espera agotado');
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+module.exports = { usuarios, clientes, mensajesProcesados, resetUsuarios, startServer, call, esperar, PASSWORD };
