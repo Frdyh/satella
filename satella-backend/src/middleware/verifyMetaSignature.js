@@ -15,12 +15,14 @@ function verifyMetaSignature(req, res, next) {
 
   const header = req.get('X-Hub-Signature-256') || '';
   if (!header.startsWith('sha256=') || !req.rawBody) {
+    console.warn('[WhatsApp] Webhook rechazado (401): llegó sin firma de Meta');
     return res.status(401).json({ error: 'Firma inválida' });
   }
 
   const esperada = crypto.createHmac('sha256', secret).update(req.rawBody).digest();
   const recibida = Buffer.from(header.slice(7), 'hex');
   if (recibida.length !== esperada.length || !crypto.timingSafeEqual(recibida, esperada)) {
+    console.warn('[WhatsApp] Webhook rechazado (401): la firma no coincide. ¿WA_APP_SECRET es la clave secreta de esta app?');
     return res.status(401).json({ error: 'Firma inválida' });
   }
   next();

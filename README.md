@@ -12,6 +12,7 @@ Satella es una aplicación web Full-Stack para gestionar la operación completa 
 - [Instalación y cómo ejecutar](#instalación-y-cómo-ejecutar)
 - [Diseño visual](#diseño-visual)
 - [Datos de ejemplo (seed)](#datos-de-ejemplo-seed)
+- [Canal de WhatsApp](#canal-de-whatsapp)
 - [Tests](#tests)
 - [Seguridad: decisiones conocidas](#seguridad-decisiones-conocidas)
 - [Cómo explicar la arquitectura](#cómo-explicar-la-arquitectura)
@@ -79,26 +80,33 @@ src/
 │   ├── authController.js     Login y "quién soy" (/api/auth)
 │   ├── categoriasController.js
 │   ├── clientesController.js
+│   ├── alertasController.js   Problemas reportados por repartidores (/api/alertas)
 │   ├── enviosController.js
 │   ├── pedidosController.js
 │   ├── productosController.js
 │   ├── proveedoresController.js
 │   ├── reportesController.js
-│   └── usuariosController.js
+│   ├── usuariosController.js   (+ generar PIN de WhatsApp)
+│   └── whatsappController.js   Webhook de Meta y simulador
 ├── routes/                Endpoints delgados: URL + verbo → función del controller
 │   └── (un archivo por entidad, igual nombre que su controller)
 ├── middleware/             Funciones que corren antes/después de cada petición
 │   ├── errorHandler.js     Convierte errores (de Prisma o del código) en respuestas HTTP correctas
-│   ├── logger.js           Registra cada petición en consola (oculta ?token=)
+│   ├── logger.js           Registra cada petición en consola (oculta ?token= y el verify token)
 │   ├── requireAuth.js      Exige un token válido y deja el usuario en req.usuario
 │   ├── requireRole.js      Deja pasar solo ciertos roles (ej. Administrador)
-│   └── validateId.js       Valida el :id de la URL, reusado por las 8 rutas
+│   ├── validateId.js       Valida el :id de la URL, reusado por las rutas con :id
+│   └── verifyMetaSignature.js  Valida la firma de Meta en el webhook de WhatsApp
 ├── services/                Lógica que cruza varias entidades o depende de un servicio externo
-│   └── whatsappVerification.js
+│   ├── inventario.js         Descuenta/devuelve stock al confirmar/cancelar pedidos
+│   ├── telefonos.js          Un teléfono no puede ser de cliente y de personal a la vez
+│   ├── whatsappVerification.js
+│   └── whatsapp/             Canal de WhatsApp (ver sección "Canal de WhatsApp")
 └── utils/                   Funciones auxiliares puras (sin req/res)
-    ├── sanitize.js          Limpia/normaliza el body antes de guardarlo
+    ├── sanitize.js          Limpia/normaliza el body antes de guardarlo (+ limpiarTexto)
     ├── validate.js          Reglas de validación reutilizables
     ├── pick.js               Filtra un objeto dejando solo los campos permitidos
+    ├── phone.js              normalizarTelefono(): formato único de WhatsApp
     ├── password.js           Hash y verificación de contraseñas (scrypt)
     ├── token.js              Firma y verificación de tokens JWT
     └── paginate.js           Calcula skip/take a partir de ?page= y ?limit=
@@ -184,11 +192,16 @@ Definido en Prisma (`satella-backend/prisma/schema.prisma`):
 | Categoria   | id, nombre, descripción                               | → Productos                     |
 | Producto    | id, nombre, unidad, precio, stockActual, stockMinimo, lote, fechaVencimiento | → Categoria, Proveedor |
 | Proveedor   | id, nombre, contacto, teléfono                        | → Productos                     |
-| Cliente     | id, nombre, teléfono, dirección, ciudad               | → Pedidos                       |
-| Usuario     | id, nombre, rol, email (único)                        | Tabla lista para auth futuro    |
+| Cliente     | id, nombre, teléfono (único), dirección, ciudad       | → Pedidos, Consentimientos      |
+| Usuario     | id, nombre, rol, email (único), passwordHash, teléfono (único) | → Envíos asignados, PINs, Reportes |
 | Pedido      | id, fecha, estado, whatsappVerificado, whatsappNotas  | → Cliente, Items, Envío         |
 | PedidoItem  | id, cantidad, pedidoId, productoId                    | Tabla intermedia Pedido↔Producto|
-| Envio       | id, fechaProgramada, ventanaHoraria, estado, notas    | → Pedido (1:1)                  |
+| Envio       | id, fechaProgramada, ventanaHoraria, estado, notas    | → Pedido (1:1), Repartidor (Usuario) |
+| SesionChat  | teléfono (único), flujo, paso, contexto (JSON), verificadoHasta, intentosFallidos, bloqueadoHasta, ventanaHasta | Estado de cada conversación de WhatsApp |
+| PinTemporal | id, hash, expiraEn, usadoEn                           | → Usuario                       |
+| ConsentimientoDatos | teléfono, textoVersion, aceptadoEn, wamid     | → Cliente (opcional)            |
+| ReporteProblema | tipo, detalle, estado, creadoEn               | → Envío, Usuario (quien reporta y quien atiende) |
+| MensajeProcesado | wamid (único), procesadoEn                   | Idempotencia del webhook        |
 
 **Estados:**
 - **Pedido:** pendiente | confirmado | cancelado
@@ -265,6 +278,8 @@ Definido en Prisma (`satella-backend/prisma/schema.prisma`):
 | `/envios`     | Envíos             | Tabla con filtros por estado + búsqueda                  |
 | `/datos`      | Gestión de datos   | Tabla CRUD a ancho completo, con selector de módulo tipo rueda radial (overlay), filtros y paginación |
 | `/reportes`   | Reportes PDF       | Grid de tipos de reporte + historial de descargas        |
+| `/whatsapp`   | WhatsApp           | Alertas de los repartidores y generador de PIN           |
+| `/whatsapp/simulador` | Simulador  | Chat para probar el bot sin Meta (plan B de la demo)     |
 
 ## Instalación y cómo ejecutar
 
@@ -343,20 +358,87 @@ También hay accesos directos que hacen lo mismo con doble clic (instalan depend
 - **`npx prisma migrate dev` pide crear la base de datos** — confirma que ya corriste el paso 2 y que el usuario de MySQL tiene permisos sobre `satella_db`.
 - **Puertos 3000 o 4000 ocupados** — cambia `PORT` en `satella-backend/.env` (y `NEXT_PUBLIC_API_URL` en el frontend) o cierra el proceso que los esté usando.
 
-## Canal de WhatsApp (en construcción)
+## Canal de WhatsApp
 
-WhatsApp es **otro cliente de esta misma API**, igual que el frontend: Meta llama por HTTP a `/api/whatsapp/webhook` y el código vive en `satella-backend/src` (mismo proceso, misma base de datos). Se está implementando por fases según el plan del proyecto; esta sección se completará al terminar.
+WhatsApp es **otro cliente de esta misma API**, igual que el frontend. No es un servicio aparte: no tiene su propio `package.json`, servidor ni base de datos. Meta llama por HTTP a `/api/whatsapp/webhook` y el código vive en `satella-backend/src`, en el mismo proceso de Express, con el mismo `PrismaClient` y siguiendo el mismo patrón Route → Controller → Model. Lo único externo es Meta y, en desarrollo, el túnel de ngrok.
+
+**Para conectarlo con WhatsApp real, sigue la [guía paso a paso](docs/guia-whatsapp.md).**
+
+### Cómo viaja un mensaje
+
+```
+WhatsApp (Cloud API) ─┐
+                      ├→ parser → mensaje normalizado → entrada → router → flujo → Prisma
+Simulador ────────────┘                                  │           │
+                                       idempotencia + límite      perfil por teléfono
+                                       por teléfono               + SesionChat
+```
+
+| Pieza | Archivo | Qué hace |
+|---|---|---|
+| Ruta | `routes/whatsapp.js` | `GET`/`POST /webhook` (+ `/simulador` si está habilitado) |
+| Firma | `middleware/verifyMetaSignature.js` | Valida `X-Hub-Signature-256` sobre el cuerpo crudo |
+| Controller | `controllers/whatsappController.js` | Responde 200 a Meta de inmediato y delega |
+| Parser | `services/whatsapp/parser.js` | Payload de Meta → `{ telefono, tipo, texto, opcionId, wamid }` |
+| Entrada | `services/whatsapp/entrada.js` | Límite de 20 mensajes/min por teléfono e idempotencia (`MensajeProcesado`) |
+| Router | `services/whatsapp/router.js` | Decide el perfil **por el teléfono** y despacha al flujo; `menu`, `cancelar`, inactividad y PIN |
+| Sesiones | `services/whatsapp/sesiones.js` | `SesionChat`: flujo, paso, contexto y ventana de 24 h |
+| Motor | `services/whatsapp/motor.js` | Ejecuta los flujos como máquinas de estados; solo acepta opciones ofrecidas |
+| Flujos | `services/whatsapp/flows/*.js` | `registro`, `cliente`, `repartidor` y `personal` (operario) |
+| PIN | `services/whatsapp/pin.js` | Genera y verifica el PIN temporal del repartidor |
+| Alertas | `services/whatsapp/alertas.js` | Avisa a los operarios con ventana abierta |
+| Sender | `services/whatsapp/cloudApi.js` | Arma texto, botones (máx. 3) y listas (máx. 10) y los envía a Meta, o al simulador |
+| Teléfonos | `utils/phone.js` | `normalizarTelefono()`: un solo formato (`573114441001`) en todos los puntos de entrada |
+
+### Perfiles y flujos
+
+El sistema decide el perfil por el número de teléfono; **nunca se le pregunta al usuario**.
+
+| Si el teléfono es de… | Flujo | Qué puede hacer |
+|---|---|---|
+| Un usuario con rol **Repartidor** | `repartidor` | PIN → **Mi ruta** (sus envíos de hoy por horario), **Confirmar entrega**, **Reportar problema** |
+| Otro usuario del personal (operario) | `personal` | Al escribir abre su ventana de 24 h y así recibe por WhatsApp los avisos de problemas |
+| Un **Cliente** | `cliente` | **Hacer pedido** (catálogo con stock → cantidad → ¿más? → dirección → resumen), **Mis pedidos**, **Cambiar dirección** (con confirmación) |
+| Nadie (número nuevo) | `registro` | Consentimiento de datos (Ley 1581 de 2012) → nombre → dirección → ciudad → resumen. Queda como cliente activo |
+
+Reglas comunes: `menu` y `cancelar` funcionan siempre. Una conversación inactiva por 30 minutos se reinicia. Ante una respuesta inesperada, se recuerda qué se espera sin romper el flujo. Los flujos están definidos en código (pasos y transiciones), no en tablas.
+
+Los pedidos de WhatsApp quedan `pendiente` y **no descuentan stock**: se descuenta cuando el personal los confirma (ver "Stock de los pedidos" en Endpoints REST).
+
+### Seguridad del canal
+
+1. **Firma del webhook:** HMAC SHA-256 con `WA_APP_SECRET` sobre el cuerpo crudo, comparado en tiempo constante.
+2. **Verificación inicial:** `hub.challenge` solo si `hub.verify_token` coincide con `WA_VERIFY_TOKEN`.
+3. **Idempotencia:** el `wamid` se registra antes de procesar; los reintentos de Meta se ignoran.
+4. **No se confía en el chat:** solo se aceptan las opciones que el bot ofreció (guardadas en `SesionChat.contexto`). Productos, stock y envíos se vuelven a leer de la base en cada paso. Toda acción del repartidor comprueba que el envío sea suyo.
+5. **PIN del repartidor:** se guarda solo el hash (scrypt), vale 10 min y sirve una vez. Con 3 intentos fallidos el número queda bloqueado 15 min; ni `cancelar` ni `menu` levantan el bloqueo. Ya verificado, queda habilitado 15 min, y todo el flujo del repartidor lo exige.
+6. **Datos personales:** sin consentimiento no se guarda nada (ni la sesión). El consentimiento queda como evidencia en `ConsentimientoDatos` (versión del texto, fecha y `wamid`). Los logs no registran el contenido de los mensajes, los PINs ni el verify token.
+7. **Sin plantillas:** el bot solo escribe dentro de la ventana de 24 h desde el último mensaje del usuario.
+8. **Simulador:** solo existe con `ENABLE_WA_SIMULATOR=true` y exige sesión del panel, porque permite escribir haciéndose pasar por cualquier teléfono.
+
+### Endpoints del canal
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET  | `/api/whatsapp/webhook` | Verificación inicial de Meta (devuelve `hub.challenge` si `hub.verify_token` coincide con `WA_VERIFY_TOKEN`) |
-| POST | `/api/whatsapp/webhook` | Mensajes entrantes. Exige la firma `X-Hub-Signature-256` (HMAC del cuerpo con `WA_APP_SECRET`) |
-| GET  | `/api/alertas?estado=abierto` | Problemas reportados por los repartidores desde WhatsApp (`abierto` o `atendido`) |
+| GET  | `/api/whatsapp/webhook` | Verificación inicial de Meta (público) |
+| POST | `/api/whatsapp/webhook` | Mensajes entrantes (público, exige la firma de Meta) |
+| POST | `/api/whatsapp/simulador` | Solo con `ENABLE_WA_SIMULATOR=true` y sesión. Body `{ telefono, texto }` o `{ telefono, opcionId }`. Responde con los mensajes que el bot habría enviado |
+| POST | `/api/usuarios/:id/pin` | Genera el PIN de un repartidor (Administrador u Operador). El PIN se devuelve en claro solo en esta respuesta |
+| GET  | `/api/alertas?estado=abierto` | Problemas reportados por los repartidores (`abierto` o `atendido`) |
 | PUT  | `/api/alertas/:id/atender` | Marca una alerta como atendida (Administrador u Operador) |
-| POST | `/api/usuarios/:id/pin` | Genera el PIN temporal de un repartidor (Administrador u Operador). El PIN se devuelve en claro solo en esta respuesta |
-| POST | `/api/whatsapp/simulador` | Solo con `ENABLE_WA_SIMULATOR=true` y sesión del personal. Body `{ telefono, texto }` o `{ telefono, opcionId }`; responde con los mensajes que el bot habría enviado |
 
-Variables en `satella-backend/.env`: ver la sección "Canal de WhatsApp" de `.env.example`. Para probar sin Meta, importa en Postman `docs/postman/satella-whatsapp.postman_collection.json`: firma los mensajes automáticamente igual que Meta.
+### Probar sin Meta
+
+- **Simulador en el panel:** **WhatsApp → Abrir simulador**. Conversa como cualquier cliente, el repartidor, la operaria o un número nuevo. Es el plan B de la demo.
+- **Postman:** importa `docs/postman/satella-whatsapp.postman_collection.json`; firma los mensajes igual que Meta.
+- **Tests:** `cd satella-backend && npm test` cubre el webhook, la firma, la idempotencia y todos los flujos.
+
+### Argumento para la defensa
+
+- No se eliminó la autenticación. En los clientes se **delega en el número de teléfono verificado por WhatsApp**, y en el personal se refuerza con un **PIN temporal**.
+- A los clientes no se les pide login porque agrega una fricción que el público objetivo no tolera, y WhatsApp ya es su canal habitual.
+- Los flujos son **máquinas de estados sobre estructuras de datos explícitas**: la sesión, las opciones ofrecidas y las transiciones. Las respuestas se guardan en el modelo relacional existente.
+- Límites aceptados: dependencia de un tercero (Meta), costos en producción, y verificación del negocio ante Meta, necesaria solo para escalar.
 
 ## Tests
 
@@ -367,7 +449,11 @@ cd satella-backend
 npm test
 ```
 
-Cubren: login (correcto, contraseña incorrecta, usuario inexistente, campos faltantes), `requireAuth` (sin token, token inválido, firmado con otro secreto, expirado, de un usuario borrado), límite de intentos de login, permisos por rol en `/api/usuarios` y que las contraseñas nunca se devuelvan ni se guarden en texto plano.
+Cubren:
+- **Login y permisos:** login (correcto, contraseña incorrecta, usuario inexistente, campos faltantes), `requireAuth` (sin token, inválido, de otro secreto, expirado, de un usuario borrado), límite de intentos, permisos por rol en `/api/usuarios` y contraseñas nunca expuestas.
+- **Teléfonos:** normalización y que un número no sea de cliente y de personal a la vez.
+- **Stock:** descuento al confirmar, rechazo sin descontar nada si falta stock, devolución al cancelar o eliminar, y que confirmar dos veces no descuente de más.
+- **WhatsApp:** firma e idempotencia del webhook, simulador, router y sesiones, registro con consentimiento, pedido del cliente, PIN y flujo del repartidor, y alertas al operario.
 
 ## Seguridad: decisiones conocidas
 

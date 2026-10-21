@@ -245,14 +245,16 @@ function resetUsuarios() {
 async function startServer() {
   // Silencia el logger de peticiones para que la salida de los tests sea legible.
   const originalLog = console.log;
+  const originalWarn = console.warn;
   console.log = () => {};
+  console.warn = () => {};
   const app = require('../src/app');
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
   return {
     baseUrl: `http://127.0.0.1:${server.address().port}/api`,
-    close: () => new Promise((resolve) => server.close(() => { console.log = originalLog; resolve(); })),
+    close: () => new Promise((resolve) => server.close(() => { console.log = originalLog; console.warn = originalWarn; resolve(); })),
   };
 }
 

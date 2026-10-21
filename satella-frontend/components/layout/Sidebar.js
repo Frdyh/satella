@@ -76,7 +76,7 @@ export default function Sidebar({ open, pathname }) {
 
       <nav className="relative flex flex-col gap-1">
         {navItems.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname === item.href} />
+          <NavLink key={item.href} {...item} active={pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))} />
         ))}
       </nav>
 
@@ -86,7 +86,7 @@ export default function Sidebar({ open, pathname }) {
 
       <nav className="relative flex flex-col gap-1">
         {moduleItems.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname === item.href} />
+          <NavLink key={item.href} {...item} active={pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))} />
         ))}
       </nav>
 

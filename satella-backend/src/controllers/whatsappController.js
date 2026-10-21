@@ -14,7 +14,11 @@ function verificar(req, res) {
   const ok = token
     && req.query['hub.mode'] === 'subscribe'
     && req.query['hub.verify_token'] === token;
-  if (!ok) return res.status(403).send('Token de verificación inválido');
+  if (!ok) {
+    console.warn('[WhatsApp] Verificación del webhook rechazada (403): el verify token no coincide con WA_VERIFY_TOKEN');
+    return res.status(403).send('Token de verificación inválido');
+  }
+  console.log('[WhatsApp] Webhook verificado por Meta ✅');
   res.status(200).type('text/plain').send(String(req.query['hub.challenge'] || ''));
 }
 
