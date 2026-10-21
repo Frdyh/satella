@@ -11,6 +11,7 @@
  *                              { ir: 'otroPaso' }           pasa al siguiente paso
  *                              { error: 'texto' }           repite el paso con ese aviso
  *                              { fin: true }                termina la conversación
+ *                              { fin: true, olvidar: true } termina y borra la sesión
  *                              y opcionalmente decir: ['texto', …] antes de continuar.
  *
  * `estado` = { perfil, contexto }. El contexto es un objeto que se guarda en
@@ -93,6 +94,7 @@ async function continuar(flujo, sesion, mensaje, perfil, salida) {
     return irA(flujo, sesion.paso, estado, salida, perfil.telefono);
   }
   if (r.fin) {
+    if (r.olvidar) return sesiones.borrar(perfil.telefono);
     return sesiones.guardar(perfil.telefono, { flujo: flujo.nombre, paso: FIN, contexto: {} });
   }
   return irA(flujo, r.ir, estado, salida, perfil.telefono);

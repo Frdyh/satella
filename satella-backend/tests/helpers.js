@@ -14,6 +14,7 @@ const usuarios = [];
 const clientes = [];
 const mensajesProcesados = [];
 const sesionesChat = [];
+const consentimientos = [];
 
 // findUnique por cualquier campo único (id, email, telefono…).
 const findBy = (rows, where) => rows.find((x) => Object.entries(where).every(([k, v]) => x[k] === v));
@@ -58,7 +59,22 @@ const fakePrisma = {
       const c = findBy(clientes, where);
       return c ? pickSelect(c, select) : null;
     },
+    create: async ({ data }) => {
+      if (data.telefono && clientes.some((c) => c.telefono === data.telefono)) throw Object.assign(new Error('dup'), { code: 'P2002' });
+      const c = { id: Math.max(0, ...clientes.map((x) => x.id)) + 1, ...data };
+      clientes.push(c);
+      return { ...c };
+    },
   },
+  consentimientoDatos: {
+    create: async ({ data }) => {
+      const c = { id: consentimientos.length + 1, ...data };
+      consentimientos.push(c);
+      return c;
+    },
+  },
+  // Sin rollback real: suficiente para probar el camino feliz y los conflictos.
+  $transaction: async (fn) => fn(fakePrisma),
   sesionChat: {
     findUnique: async ({ where }) => { const s = findBy(sesionesChat, where); return s ? JSON.parse(JSON.stringify(s)) : null; },
     upsert: async ({ where, create, update }) => {
@@ -67,6 +83,11 @@ const fakePrisma = {
       else sesionesChat.push((s = { id: sesionesChat.length + 1, intentosFallidos: 0, ...create, actualizadaEn: new Date() }));
       // Copia, como Prisma: el llamador no comparte el objeto guardado.
       return JSON.parse(JSON.stringify(s));
+    },
+    deleteMany: async ({ where }) => {
+      const antes = sesionesChat.length;
+      for (let i = sesionesChat.length - 1; i >= 0; i--) if (sesionesChat[i].telefono === where.telefono) sesionesChat.splice(i, 1);
+      return { count: antes - sesionesChat.length };
     },
   },
   mensajeProcesado: {
@@ -96,6 +117,7 @@ function resetUsuarios() {
   clientes.push({ id: 1, nombre: 'Laura Gómez', telefono: '573114441001' });
   mensajesProcesados.length = 0;
   sesionesChat.length = 0;
+  consentimientos.length = 0;
 }
 
 /** Arranca la app en un puerto aleatorio y devuelve { baseUrl, close }. */
@@ -130,6 +152,24 @@ async function call(baseUrl, method, path, { token, body, raw, headers = {} } = 
   return { status: res.status, body: parsed };
 }
 
+/**
+ * Conversación por el simulador: escribir(telefono, 'texto' | { opcionId, opcionTexto })
+ * devuelve los mensajes que respondió el bot. Requiere ENABLE_WA_SIMULATOR=true.
+ */
+function crearChat(server) {
+  const { signToken } = require('../src/utils/token');
+  return async function escribir(telefono, contenido) {
+    const body = typeof contenido === 'string' ? { telefono, texto: contenido } : { telefono, ...contenido };
+    const token = signToken(usuarios.find((u) => u.id === 1));
+    const r = await call(server.baseUrl, 'POST', '/whatsapp/simulador', { token, body });
+    if (r.status !== 200) throw new Error(`Simulador respondió ${r.status}: ${JSON.stringify(r.body)}`);
+    return r.body.respuestas;
+  };
+}
+
+/** Texto visible de cada mensaje del bot (texto simple o cuerpo de botones/lista). */
+const textos = (respuestas) => respuestas.map((m) => m.text?.body || m.interactive?.body?.text);
+
 /** Espera hasta que `condicion()` sea true (para trabajo que corre después de responder). */
 async function esperar(condicion, ms = 2000) {
   const hasta = Date.now() + ms;
@@ -139,4 +179,4 @@ async function esperar(condicion, ms = 2000) {
   }
 }
 
-module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, resetUsuarios, startServer, call, esperar, PASSWORD };
+module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, consentimientos, resetUsuarios, startServer, call, esperar, crearChat, textos, PASSWORD };

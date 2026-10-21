@@ -40,10 +40,15 @@ function guardar(telefono, { flujo, paso, contexto }) {
   });
 }
 
+/** Elimina la sesión (por ejemplo, si la persona no aceptó el tratamiento de datos). */
+function borrar(telefono) {
+  return prisma.sesionChat.deleteMany({ where: { telefono } });
+}
+
 /** true si a este teléfono todavía se le puede escribir (ventana de 24 h abierta). */
 async function ventanaAbierta(telefono, ahora = new Date()) {
   const sesion = await cargar(telefono);
   return Boolean(sesion?.ventanaHasta && new Date(sesion.ventanaHasta) > ahora);
 }
 
-module.exports = { cargar, guardar, inactiva, ventanaAbierta, INACTIVIDAD_MS, VENTANA_MS };
+module.exports = { cargar, guardar, borrar, inactiva, ventanaAbierta, INACTIVIDAD_MS, VENTANA_MS };

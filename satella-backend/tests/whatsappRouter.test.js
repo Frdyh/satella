@@ -2,13 +2,13 @@ process.env.ENABLE_WA_SIMULATOR = 'true';
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { usuarios, clientes, sesionesChat, resetUsuarios, startServer, call } = require('./helpers');
-const { signToken } = require('../src/utils/token');
+const { clientes, sesionesChat, resetUsuarios, startServer, crearChat, textos } = require('./helpers');
 const { reiniciarLimites } = require('../src/services/whatsapp/entrada');
 const sesiones = require('../src/services/whatsapp/sesiones');
 
 let server;
-before(async () => { server = await startServer(); });
+let escribir;
+before(async () => { server = await startServer(); escribir = crearChat(server); });
 after(() => server.close());
 beforeEach(() => { resetUsuarios(); reiniciarLimites(); });
 
@@ -17,15 +17,6 @@ const DIEGO = '573001112233';      // repartidor
 const MARIA = '573004445566';      // operaria
 const NUEVO = '573209998877';      // no registrado
 
-/** Escribe por el simulador y devuelve los mensajes que respondió el bot. */
-async function escribir(telefono, contenido) {
-  const body = typeof contenido === 'string' ? { telefono, texto: contenido } : { telefono, ...contenido };
-  const token = signToken(usuarios.find((u) => u.id === 1));
-  const r = await call(server.baseUrl, 'POST', '/whatsapp/simulador', { token, body });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  return r.body.respuestas;
-}
-const textos = (respuestas) => respuestas.map((m) => m.text?.body || m.interactive?.body?.text);
 const sesionDe = (telefono) => sesionesChat.find((s) => s.telefono === telefono);
 
 // --- Identificación del perfil por teléfono ---
@@ -38,10 +29,10 @@ test('cliente conocido → menú con lista de 3 opciones y su nombre', async () 
   assert.equal(sesionDe(LAURA).flujo, 'cliente');
 });
 
-test('número desconocido → flujo de registro, y responde a cada mensaje', async () => {
-  assert.match(textos(await escribir(NUEVO, 'hola'))[0], /Bienvenido/);
-  assert.match(textos(await escribir(NUEVO, 'hola otra vez'))[0], /Bienvenido/);
+test('número desconocido → flujo de registro (empieza por el consentimiento)', async () => {
+  assert.match(textos(await escribir(NUEVO, 'hola'))[0], /bienvenida.*Ley 1581/s);
   assert.equal(sesionDe(NUEVO).flujo, 'registro');
+  assert.equal(sesionDe(NUEVO).paso, 'consentimiento');
 });
 
 test('repartidor → su propio flujo (sin funciones antes del PIN)', async () => {
@@ -61,8 +52,10 @@ test('operaria → mensaje informativo, y queda abierta su ventana de 24 h', asy
 
 test('el perfil lo decide el teléfono, no lo que diga el usuario', async () => {
   await escribir(NUEVO, 'hola');
-  // Aunque escriba "soy repartidor" o mande ids del menú del repartidor, sigue en registro.
-  assert.match(textos(await escribir(NUEVO, 'soy repartidor'))[0], /Bienvenido/);
+  // Aunque escriba "soy repartidor", sigue en registro (y se le repite qué se espera).
+  const r = textos(await escribir(NUEVO, 'soy repartidor'));
+  assert.match(r[0], /No entendí/);
+  assert.match(r[1], /Ley 1581/);
   assert.equal(sesionDe(NUEVO).flujo, 'registro');
 });
 
