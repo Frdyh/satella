@@ -101,18 +101,20 @@ test('simulador exige sesión del personal', async () => {
   assert.equal(status, 401);
 });
 
-test('simulador: eco de texto, con el mismo camino que un mensaje real', async () => {
+test('simulador: recorre el mismo camino que un mensaje real (parser → router → flujo)', async () => {
   const { status, body } = await api('POST', '/whatsapp/simulador', { token: token(), body: { telefono: '311-444-1001', texto: 'hola' } });
   assert.equal(status, 200);
   assert.equal(body.resultado, 'procesado');
   assert.equal(body.respuestas.length, 1);
   assert.equal(body.respuestas[0].to, '573114441001');
-  assert.match(body.respuestas[0].text.body, /hola/);
+  assert.match(body.respuestas[0].interactive.body.text, /Hola Laura/);
 });
 
-test('simulador: eco de una opción de lista o botón', async () => {
+test('simulador: acepta respuestas de lista o botón', async () => {
+  await api('POST', '/whatsapp/simulador', { token: token(), body: { telefono: '3114441001', texto: 'hola' } });
   const { body } = await api('POST', '/whatsapp/simulador', { token: token(), body: { telefono: '3114441001', opcionId: 'menu:pedido', opcionTexto: 'Hacer pedido' } });
-  assert.match(body.respuestas[0].text.body, /Hacer pedido.*menu:pedido/);
+  assert.equal(body.resultado, 'procesado');
+  assert.equal(body.respuestas[0].type, 'text');
 });
 
 test('simulador: repetir el wamid → duplicado, sin respuesta', async () => {

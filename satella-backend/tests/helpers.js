@@ -13,6 +13,7 @@ const { hashPassword } = require('../src/utils/password');
 const usuarios = [];
 const clientes = [];
 const mensajesProcesados = [];
+const sesionesChat = [];
 
 // findUnique por cualquier campo único (id, email, telefono…).
 const findBy = (rows, where) => rows.find((x) => Object.entries(where).every(([k, v]) => x[k] === v));
@@ -58,6 +59,16 @@ const fakePrisma = {
       return c ? pickSelect(c, select) : null;
     },
   },
+  sesionChat: {
+    findUnique: async ({ where }) => { const s = findBy(sesionesChat, where); return s ? JSON.parse(JSON.stringify(s)) : null; },
+    upsert: async ({ where, create, update }) => {
+      let s = findBy(sesionesChat, where);
+      if (s) Object.assign(s, update, { actualizadaEn: new Date() });
+      else sesionesChat.push((s = { id: sesionesChat.length + 1, intentosFallidos: 0, ...create, actualizadaEn: new Date() }));
+      // Copia, como Prisma: el llamador no comparte el objeto guardado.
+      return JSON.parse(JSON.stringify(s));
+    },
+  },
   mensajeProcesado: {
     create: async ({ data }) => {
       if (mensajesProcesados.some((m) => m.wamid === data.wamid)) throw Object.assign(new Error('dup'), { code: 'P2002' });
@@ -77,13 +88,14 @@ function resetUsuarios() {
   usuarios.length = 0;
   usuarios.push(
     { id: 1, nombre: 'Juan Valencia', rol: 'Administrador', email: 'juan@satella.local', passwordHash: hashPassword(PASSWORD) },
-    { id: 2, nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local', passwordHash: hashPassword(PASSWORD) },
+    { id: 2, nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local', passwordHash: hashPassword(PASSWORD), telefono: '573004445566' },
     { id: 3, nombre: 'Carlos Pérez', rol: 'Despachador', email: 'carlos@satella.local', passwordHash: hashPassword(PASSWORD) },
     { id: 4, nombre: 'Diego Ramírez', rol: 'Repartidor', email: 'diego@satella.local', passwordHash: hashPassword(PASSWORD), telefono: '573001112233' },
   );
   clientes.length = 0;
   clientes.push({ id: 1, nombre: 'Laura Gómez', telefono: '573114441001' });
   mensajesProcesados.length = 0;
+  sesionesChat.length = 0;
 }
 
 /** Arranca la app en un puerto aleatorio y devuelve { baseUrl, close }. */
@@ -127,4 +139,4 @@ async function esperar(condicion, ms = 2000) {
   }
 }
 
-module.exports = { usuarios, clientes, mensajesProcesados, resetUsuarios, startServer, call, esperar, PASSWORD };
+module.exports = { usuarios, clientes, mensajesProcesados, sesionesChat, resetUsuarios, startServer, call, esperar, PASSWORD };
