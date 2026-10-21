@@ -4,13 +4,14 @@ const { missingFields, isValidEmail } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
 const { hashPassword } = require('../utils/password');
 const { ADMIN_ROLE } = require('../middleware/requireRole');
+const { prepararTelefono } = require('../services/telefonos');
 
-const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password'];
+const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password', 'telefono'];
 const REQUIRED_FIELDS = ['nombre', 'email'];
 const MIN_PASSWORD_LENGTH = 8;
 
 // Campos que se pueden devolver al cliente: nunca incluye passwordHash.
-const PUBLIC_SELECT = { id: true, nombre: true, rol: true, email: true };
+const PUBLIC_SELECT = { id: true, nombre: true, rol: true, email: true, telefono: true };
 
 /**
  * Valida el body y lo transforma al formato de la tabla: normaliza el email
@@ -73,6 +74,8 @@ async function create(req, res, next) {
   try {
     const { data, error } = buildUsuarioData(req.body, { requirePassword: true });
     if (error) return res.status(400).json({ error });
+    const telError = await prepararTelefono(data);
+    if (telError) return res.status(400).json({ error: telError });
     const usuario = await prisma.usuario.create({ data, select: PUBLIC_SELECT });
     res.status(201).json(usuario);
   } catch (err) { next(err); }
@@ -97,6 +100,9 @@ async function update(req, res, next) {
     } else if (req.usuario.id === req.params.id && data.rol !== undefined && data.rol !== ADMIN_ROLE) {
       return res.status(400).json({ error: 'No puedes quitarte el rol de Administrador a ti mismo' });
     }
+
+    const telError = await prepararTelefono(data, { usuarioId: req.params.id });
+    if (telError) return res.status(400).json({ error: telError });
 
     const usuario = await prisma.usuario.update({
       where: { id: req.params.id },

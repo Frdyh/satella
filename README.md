@@ -373,7 +373,8 @@ El seed (`satella-backend/prisma/seed.js`) incluye datos del rubro lácteo colom
 - **Clientes:** 6 clientes de ciudades colombianas (Fusagasugá, Soacha, Bogotá, Girardot, Facatativá, Zipaquirá)
 - **Pedidos:** 5 pedidos con items (algunos confirmados, otros pendientes)
 - **Envíos:** 4 envíos en diferentes estados (en cola, en ruta, entregado)
-- **Usuarios (para iniciar sesión):** `juan@satella.local` (Administrador), `maria@satella.local` (Operador), `carlos@satella.local` (Despachador) — contraseña `satella123` para los tres. Cámbialas antes de usar el sistema con datos reales.
+- **Usuarios (para iniciar sesión):** `juan@satella.local` (Administrador), `maria@satella.local` (Operador), `carlos@satella.local` (Despachador) y `diego@satella.local` (Repartidor) — contraseña `satella123` para todos. Cámbialas antes de usar el sistema con datos reales.
+- **Teléfonos:** se guardan normalizados al formato de WhatsApp (`573114441001`, ver `src/utils/phone.js`). María (operaria) y Diego (repartidor) tienen teléfono para el canal de WhatsApp, y Diego tiene asignados los envíos de hoy. Para la demo con números reales, define `SEED_TEL_REPARTIDOR` y `SEED_TEL_OPERARIO` antes de correr el seed. Un mismo número no puede ser de un cliente y de un usuario del personal a la vez.
 
 ## Cómo explicar la arquitectura
 

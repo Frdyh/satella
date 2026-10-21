@@ -2,6 +2,7 @@ const prisma = require('../lib/prisma');
 const pick = require('../utils/pick');
 const { missingFields } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
+const { prepararTelefono } = require('../services/telefonos');
 
 const ALLOWED_FIELDS = ['nombre', 'telefono', 'direccion', 'ciudad'];
 const REQUIRED_FIELDS = ['nombre'];
@@ -46,6 +47,8 @@ async function create(req, res, next) {
     if (missing.length) {
       return res.status(400).json({ error: `Faltan campos requeridos: ${missing.join(', ')}` });
     }
+    const telError = await prepararTelefono(data);
+    if (telError) return res.status(400).json({ error: telError });
     const cliente = await prisma.cliente.create({ data });
     res.status(201).json(cliente);
   } catch (err) { next(err); }
@@ -58,6 +61,8 @@ async function update(req, res, next) {
     if (missing.length) {
       return res.status(400).json({ error: `Faltan campos requeridos: ${missing.join(', ')}` });
     }
+    const telError = await prepararTelefono(data, { clienteId: req.params.id });
+    if (telError) return res.status(400).json({ error: telError });
     const cliente = await prisma.cliente.update({
       where: { id: req.params.id },
       data,

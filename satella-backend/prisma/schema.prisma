@@ -8,9 +8,9 @@ datasource db {
 }
 
 model Categoria {
-  id          Int       @id @default(autoincrement())
-  nombre      String    @db.VarChar(100)
-  descripcion String?   @db.VarChar(255)
+  id          Int        @id @default(autoincrement())
+  nombre      String     @db.VarChar(100)
+  descripcion String?    @db.VarChar(255)
   productos   Producto[]
 }
 
@@ -34,51 +34,59 @@ model Producto {
 }
 
 model Proveedor {
-  id        Int       @id @default(autoincrement())
-  nombre    String    @db.VarChar(150)
-  contacto  String?   @db.VarChar(150)
-  telefono  String?   @db.VarChar(30)
+  id        Int        @id @default(autoincrement())
+  nombre    String     @db.VarChar(150)
+  contacto  String?    @db.VarChar(150)
+  telefono  String?    @db.VarChar(30)
   productos Producto[]
 }
 
 model Cliente {
-  id        Int      @id @default(autoincrement())
-  nombre    String   @db.VarChar(150)
-  telefono  String?  @db.VarChar(30)
-  direccion String?  @db.VarChar(255)
-  ciudad    String?  @db.VarChar(100)
-  pedidos   Pedido[]
+  id              Int                   @id @default(autoincrement())
+  nombre          String                @db.VarChar(150)
+  // Normalizado con utils/phone.js (ej. "573114441001"): así lo entrega WhatsApp.
+  telefono        String?               @unique @db.VarChar(20)
+  direccion       String?               @db.VarChar(255)
+  ciudad          String?               @db.VarChar(100)
+  pedidos         Pedido[]
+  consentimientos ConsentimientoDatos[]
 }
 
 model Usuario {
-  id    Int    @id @default(autoincrement())
-  nombre String @db.VarChar(150)
-  rol    String @db.VarChar(50)
-  email  String @unique @db.VarChar(150)
+  id                Int               @id @default(autoincrement())
+  nombre            String            @db.VarChar(150)
+  rol               String            @db.VarChar(50)
+  email             String            @unique @db.VarChar(150)
   // "salt:hash" generado con scrypt (ver src/utils/password.js). Nunca se devuelve en la API.
-  passwordHash String? @db.VarChar(255)
+  passwordHash      String?           @db.VarChar(255)
+  // Normalizado con utils/phone.js. Identifica al personal en el canal de WhatsApp.
+  telefono          String?           @unique @db.VarChar(20)
+  enviosAsignados   Envio[]
+  pines             PinTemporal[]
+  reportes          ReporteProblema[] @relation("ReportesCreados")
+  reportesAtendidos ReporteProblema[] @relation("ReportesAtendidos")
 }
 
 model Pedido {
-  id                Int          @id @default(autoincrement())
-  fecha             DateTime     @default(now())
-  estado            String       @default("pendiente") @db.VarChar(30)
-  whatsappVerificado Boolean     @default(false)
-  whatsappNotas     String?      @db.VarChar(255)
-  clienteId         Int
-  cliente           Cliente      @relation(fields: [clienteId], references: [id])
-  items             PedidoItem[]
-  envio             Envio?
+  id                 Int          @id @default(autoincrement())
+  fecha              DateTime     @default(now())
+  estado             String       @default("pendiente") @db.VarChar(30)
+  whatsappVerificado Boolean      @default(false)
+  whatsappNotas      String?      @db.VarChar(255)
+  clienteId          Int
+  cliente            Cliente      @relation(fields: [clienteId], references: [id])
+  items              PedidoItem[]
+  envio              Envio?
 
   @@index([clienteId])
 }
 
 model PedidoItem {
-  id         Int     @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   cantidad   Int
   pedidoId   Int
   productoId Int
-  pedido     Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedido     Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   producto   Producto @relation(fields: [productoId], references: [id])
 
   @@index([pedidoId])
@@ -86,14 +94,91 @@ model PedidoItem {
 }
 
 model Envio {
-  id                Int      @id @default(autoincrement())
-  fechaProgramada  DateTime
-  ventanaHoraria   String?  @db.VarChar(50)
-  estado           String   @default("en cola") @db.VarChar(30)
-  whatsappVerificado Boolean @default(false)
-  notas            String?  @db.VarChar(255)
-  pedidoId         Int      @unique
-  pedido           Pedido   @relation(fields: [pedidoId], references: [id])
+  id                 Int               @id @default(autoincrement())
+  fechaProgramada    DateTime
+  ventanaHoraria     String?           @db.VarChar(50)
+  estado             String            @default("en cola") @db.VarChar(30)
+  whatsappVerificado Boolean           @default(false)
+  notas              String?           @db.VarChar(255)
+  pedidoId           Int               @unique
+  pedido             Pedido            @relation(fields: [pedidoId], references: [id])
+  // Repartidor asignado. Su "ruta" son sus envíos del día ordenados por ventanaHoraria.
+  repartidorId       Int?
+  repartidor         Usuario?          @relation(fields: [repartidorId], references: [id])
+  reportes           ReporteProblema[]
 
   @@index([pedidoId])
+  @@index([repartidorId])
+}
+
+// ─── Canal de WhatsApp ───────────────────────────────────────────────
+
+// Estado de la conversación de cada teléfono: en qué flujo y paso va, y las
+// respuestas parciales y opciones ofrecidas (contexto). Ver services/whatsapp/.
+model SesionChat {
+  id               Int       @id @default(autoincrement())
+  telefono         String    @unique @db.VarChar(20)
+  flujo            String    @db.VarChar(30)
+  paso             String    @db.VarChar(50)
+  contexto         Json
+  // Hasta cuándo vale el PIN validado del repartidor.
+  verificadoHasta  DateTime?
+  intentosFallidos Int       @default(0)
+  bloqueadoHasta   DateTime?
+  // Último mensaje entrante + 24 h: solo se puede escribir dentro de esa ventana.
+  ventanaHasta     DateTime?
+  actualizadaEn    DateTime  @updatedAt
+}
+
+// PIN de un solo uso que el personal genera desde el panel. Solo se guarda el hash.
+model PinTemporal {
+  id        Int       @id @default(autoincrement())
+  usuarioId Int
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  hash      String    @db.VarChar(255)
+  expiraEn  DateTime
+  usadoEn   DateTime?
+  creadoEn  DateTime  @default(now())
+
+  @@index([usuarioId])
+}
+
+// Evidencia del consentimiento de tratamiento de datos (Ley 1581 de 2012).
+model ConsentimientoDatos {
+  id           Int      @id @default(autoincrement())
+  telefono     String   @db.VarChar(20)
+  clienteId    Int?
+  cliente      Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  textoVersion String   @db.VarChar(20)
+  aceptadoEn   DateTime @default(now())
+  // Id del mensaje de WhatsApp con el que aceptó.
+  wamid        String?  @db.VarChar(255)
+
+  @@index([telefono])
+  @@index([clienteId])
+}
+
+model ReporteProblema {
+  id            Int      @id @default(autoincrement())
+  envioId       Int
+  envio         Envio    @relation(fields: [envioId], references: [id], onDelete: Cascade)
+  usuarioId     Int
+  usuario       Usuario  @relation("ReportesCreados", fields: [usuarioId], references: [id])
+  tipo          String   @db.VarChar(40)
+  detalle       String?  @db.VarChar(500)
+  estado        String   @default("abierto") @db.VarChar(20)
+  creadoEn      DateTime @default(now())
+  atendidoPorId Int?
+  atendidoPor   Usuario? @relation("ReportesAtendidos", fields: [atendidoPorId], references: [id])
+
+  @@index([envioId])
+  @@index([usuarioId])
+  @@index([estado])
+}
+
+// Ids de mensajes ya procesados: Meta reintenta entregas y no deben procesarse dos veces.
+model MensajeProcesado {
+  id          Int      @id @default(autoincrement())
+  wamid       String   @unique @db.VarChar(255)
+  procesadoEn DateTime @default(now())
 }

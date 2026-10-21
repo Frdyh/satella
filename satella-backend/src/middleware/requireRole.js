@@ -1,4 +1,6 @@
 const ADMIN_ROLE = 'Administrador';
+// Usa el canal de WhatsApp (con PIN) para ver su ruta y reportar entregas.
+const REPARTIDOR_ROLE = 'Repartidor';
 
 /**
  * Deja pasar solo a usuarios cuyo rol esté en `roles`.
@@ -14,4 +16,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireRole, ADMIN_ROLE };
+module.exports = { requireRole, ADMIN_ROLE, REPARTIDOR_ROLE };

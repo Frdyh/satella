@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { PrismaClient } = require('@prisma/client');
 const { hashPassword } = require('../src/utils/password');
+const { normalizarTelefono } = require('../src/utils/phone');
 
 const prisma = new PrismaClient();
 
@@ -15,6 +16,11 @@ async function main() {
   }
 
   console.log('Limpiando datos existentes...');
+  await prisma.mensajeProcesado.deleteMany();
+  await prisma.sesionChat.deleteMany();
+  await prisma.reporteProblema.deleteMany();
+  await prisma.consentimientoDatos.deleteMany();
+  await prisma.pinTemporal.deleteMany();
   await prisma.pedidoItem.deleteMany();
   await prisma.envio.deleteMany();
   await prisma.pedido.deleteMany();
@@ -131,22 +137,22 @@ async function main() {
 
   console.log('Creando clientes...');
   const cli1 = await prisma.cliente.create({
-    data: { nombre: 'Laura Gómez', telefono: '311-444-1001', direccion: 'Calle 12 #5-30', ciudad: 'Fusagasugá' },
+    data: { nombre: 'Laura Gómez', telefono: normalizarTelefono('311-444-1001'), direccion: 'Calle 12 #5-30', ciudad: 'Fusagasugá' },
   });
   const cli2 = await prisma.cliente.create({
-    data: { nombre: 'Andrés Ruiz', telefono: '312-444-1002', direccion: 'Av. 1 de Mayo #8-14', ciudad: 'Soacha' },
+    data: { nombre: 'Andrés Ruiz', telefono: normalizarTelefono('312-444-1002'), direccion: 'Av. 1 de Mayo #8-14', ciudad: 'Soacha' },
   });
   const cli3 = await prisma.cliente.create({
-    data: { nombre: 'Camila Torres', telefono: '313-444-1003', direccion: 'Carrera 7 #45-22', ciudad: 'Bogotá' },
+    data: { nombre: 'Camila Torres', telefono: normalizarTelefono('313-444-1003'), direccion: 'Carrera 7 #45-22', ciudad: 'Bogotá' },
   });
   const cli4 = await prisma.cliente.create({
-    data: { nombre: 'Mateo Díaz', telefono: '314-444-1004', direccion: 'Calle 3 #10-55', ciudad: 'Girardot' },
+    data: { nombre: 'Mateo Díaz', telefono: normalizarTelefono('314-444-1004'), direccion: 'Calle 3 #10-55', ciudad: 'Girardot' },
   });
   const cli5 = await prisma.cliente.create({
-    data: { nombre: 'Sofía Pérez', telefono: '315-444-1005', direccion: 'Av. Central #20-18', ciudad: 'Facatativá' },
+    data: { nombre: 'Sofía Pérez', telefono: normalizarTelefono('315-444-1005'), direccion: 'Av. Central #20-18', ciudad: 'Facatativá' },
   });
   const cli6 = await prisma.cliente.create({
-    data: { nombre: 'Juan Camilo Rodríguez', telefono: '316-444-1006', direccion: 'Carrera 11 #7-89', ciudad: 'Zipaquirá' },
+    data: { nombre: 'Juan Camilo Rodríguez', telefono: normalizarTelefono('316-444-1006'), direccion: 'Carrera 11 #7-89', ciudad: 'Zipaquirá' },
   });
 
   console.log('Creando usuarios...');
@@ -154,11 +160,26 @@ async function main() {
     data: { nombre: 'Juan Valencia', rol: 'Administrador', email: 'juan@satella.local', passwordHash: hashPassword('satella123') },
   });
   await prisma.usuario.create({
-    data: { nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local', passwordHash: hashPassword('satella123') },
+    data: {
+      nombre: 'María Fernanda López', rol: 'Operador', email: 'maria@satella.local', passwordHash: hashPassword('satella123'),
+      // Operaria: recibe por WhatsApp los avisos de problemas del repartidor.
+      telefono: normalizarTelefono(process.env.SEED_TEL_OPERARIO || '300-444-5566'),
+    },
   });
   await prisma.usuario.create({
     data: { nombre: 'Carlos Pérez', rol: 'Despachador', email: 'carlos@satella.local', passwordHash: hashPassword('satella123') },
   });
+  // Repartidor: usa el canal de WhatsApp con PIN. Para la demo con Meta, poner
+  // el número real en SEED_TEL_REPARTIDOR (un número no puede ser cliente y personal a la vez).
+  const repartidor = await prisma.usuario.create({
+    data: {
+      nombre: 'Diego Ramírez', rol: 'Repartidor', email: 'diego@satella.local', passwordHash: hashPassword('satella123'),
+      telefono: normalizarTelefono(process.env.SEED_TEL_REPARTIDOR || '300-111-2233'),
+    },
+  });
+
+  // "Mi ruta" del repartidor son sus envíos de HOY, así que estas fechas son relativas.
+  const hoyA = (hora) => { const d = new Date(); d.setHours(hora, 0, 0, 0); return d; };
 
   console.log('Creando pedidos...');
   const ped1 = await prisma.pedido.create({
@@ -233,18 +254,20 @@ async function main() {
   console.log('Creando envíos...');
   await prisma.envio.create({
     data: {
-      fechaProgramada: new Date('2026-08-25T10:30:00'),
+      fechaProgramada: hoyA(10),
       ventanaHoraria: '10:00 - 12:00',
       estado: 'en cola',
       pedidoId: ped1.id,
+      repartidorId: repartidor.id,
     },
   });
   await prisma.envio.create({
     data: {
-      fechaProgramada: new Date('2026-08-25T09:00:00'),
+      fechaProgramada: hoyA(8),
       ventanaHoraria: '08:00 - 10:00',
       estado: 'en ruta',
       pedidoId: ped2.id,
+      repartidorId: repartidor.id,
     },
   });
   await prisma.envio.create({
@@ -258,10 +281,11 @@ async function main() {
   });
   await prisma.envio.create({
     data: {
-      fechaProgramada: new Date('2026-08-26T08:00:00'),
-      ventanaHoraria: '08:00 - 10:00',
-      estado: 'en cola',
+      fechaProgramada: hoyA(14),
+      ventanaHoraria: '14:00 - 16:00',
+      estado: 'en ruta',
       pedidoId: ped5.id,
+      repartidorId: repartidor.id,
     },
   });
 
