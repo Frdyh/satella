@@ -40,13 +40,13 @@ test('un Despachador NO puede crear usuarios', async () => {
     body: { nombre: 'Intruso', email: 'intruso@x.co', rol: 'Administrador', password: '12345678' },
   });
   assert.equal(status, 403);
-  assert.equal(usuarios.length, 3);
+  assert.equal(usuarios.length, 4);
 });
 
 test('un Despachador NO puede borrar usuarios', async () => {
   const { status } = await api('DELETE', '/usuarios/1', { token: despachador() });
   assert.equal(status, 403);
-  assert.equal(usuarios.length, 3);
+  assert.equal(usuarios.length, 4);
 });
 
 test('un Despachador SÍ puede cambiar su propia contraseña', async () => {
@@ -76,7 +76,7 @@ test('el Administrador no puede borrarse a sí mismo', async () => {
 test('el Administrador puede borrar a otro usuario', async () => {
   const { status } = await api('DELETE', '/usuarios/3', { token: admin() });
   assert.equal(status, 204);
-  assert.equal(usuarios.length, 2);
+  assert.equal(usuarios.length, 3);
 });
 
 // --- Contraseñas ---

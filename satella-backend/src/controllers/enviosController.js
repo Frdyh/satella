@@ -4,6 +4,7 @@ const sanitize = require('../utils/sanitize');
 const pick = require('../utils/pick');
 const { missingFields, isValidNumber, isValidEnum } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
+const { REPARTIDOR_ROLE } = require('../middleware/requireRole');
 
 const ESTADOS_ENVIO = ['en cola', 'en ruta', 'entregado', 'retraso'];
 const VENTANAS_HORARIAS = ['08:00 - 10:00', '10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00', '18:00 - 20:00'];
@@ -15,9 +16,10 @@ const VENTANAS_HORARIAS = ['08:00 - 10:00', '10:00 - 12:00', '12:00 - 14:00', '1
  */
 const includeRelations = {
   pedido: { include: { cliente: true } },
+  repartidor: { select: { id: true, nombre: true, telefono: true } },
 };
 
-const ALLOWED_FIELDS = ['fechaProgramada', 'ventanaHoraria', 'estado', 'whatsappVerificado', 'notas', 'pedidoId'];
+const ALLOWED_FIELDS = ['fechaProgramada', 'ventanaHoraria', 'estado', 'whatsappVerificado', 'notas', 'pedidoId', 'repartidorId'];
 const REQUIRED_FIELDS = ['fechaProgramada', 'ventanaHoraria', 'pedidoId'];
 
 async function validateEnvio(data) {
@@ -33,6 +35,13 @@ async function validateEnvio(data) {
 
   const pedido = await prisma.pedido.findUnique({ where: { id: data.pedidoId } });
   if (!pedido) return `Pedido no encontrado: ${data.pedidoId}`;
+
+  // repartidorId es opcional (null = sin asignar), pero si viene debe ser un Repartidor.
+  if (data.repartidorId !== undefined && data.repartidorId !== null) {
+    if (!isValidNumber(data.repartidorId)) return 'Campo numérico inválido: repartidorId';
+    const repartidor = await prisma.usuario.findUnique({ where: { id: data.repartidorId } });
+    if (!repartidor || repartidor.rol !== REPARTIDOR_ROLE) return `El usuario ${data.repartidorId} no es un repartidor`;
+  }
 
   return null;
 }
@@ -83,7 +92,7 @@ async function create(req, res, next) {
   try {
     const data = sanitize(pick(req.body, ALLOWED_FIELDS), {
       dateFields: ['fechaProgramada'],
-      intFields: ['pedidoId'],
+      intFields: ['pedidoId', 'repartidorId'],
     });
     if (data.estado === null) delete data.estado;
     const error = await validateEnvio(data);
@@ -101,7 +110,7 @@ async function update(req, res, next) {
   try {
     const data = sanitize(pick(req.body, ALLOWED_FIELDS), {
       dateFields: ['fechaProgramada'],
-      intFields: ['pedidoId'],
+      intFields: ['pedidoId', 'repartidorId'],
     });
     // 'estado' no es nulleable en el esquema (tiene default); si no se envía, se omite
     // para que Prisma aplique su valor por defecto en vez de fallar.

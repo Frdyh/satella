@@ -46,11 +46,13 @@ const columnConfig = {
         </>
       ),
     },
+    { key: 'repartidor', label: 'Repartidor', render: (v) => v?.nombre || '—' },
   ],
   usuarios: [
     { key: 'nombre', label: 'Nombre', render: (v) => <b className="text-text-primary">{v}</b> },
     { key: 'rol', label: 'Rol' },
     { key: 'email', label: 'Email' },
+    { key: 'telefono', label: 'WhatsApp', render: (v) => v || '—' },
   ],
   categorias: [
     { key: 'nombre', label: 'Nombre', render: (v) => <b className="text-text-primary">{v}</b> },

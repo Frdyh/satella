@@ -1,12 +1,13 @@
 /**
  * Servicio de verificación por WhatsApp.
  *
- * Por ahora es un marcador manual: el operador revisa el chat
- * y marca el pedido/envío como verificado.
- *
- * Diseñado para poder enchufar la API de WhatsApp Business o Twilio
- * más adelante sin tocar el resto del sistema.
+ * marcarVerificado: el operador revisa el chat y marca el pedido/envío como
+ * verificado desde el panel.
+ * enviarConfirmacion: envía un mensaje real por el canal de WhatsApp
+ * (ver services/whatsapp/, que implementa el canal completo).
  */
+const { crearSalida } = require('./whatsapp/cloudApi');
+const { normalizarTelefono } = require('../utils/phone');
 
 async function marcarVerificado(prisma, { tipo, id, notas }) {
   if (tipo === 'pedido') {
@@ -33,16 +34,15 @@ async function marcarVerificado(prisma, { tipo, id, notas }) {
 }
 
 /**
- * Placeholder para futura integración con WhatsApp Business API / Twilio.
- * Cuando se active, aquí iría la lógica de:
- *  1. Enviar mensaje de confirmación al número del cliente
- *  2. Recibir respuesta
- *  3. Actualizar el estado de verificación automáticamente
+ * Envía un mensaje de texto al número indicado por WhatsApp Cloud API
+ * (services/whatsapp/cloudApi.js). Ojo: WhatsApp solo deja escribir a quien
+ * envió un mensaje en las últimas 24 h, y este canal no usa plantillas; quien
+ * llame debe revisar antes la ventana (SesionChat.ventanaHasta).
  */
 async function enviarConfirmacion(numero, mensaje) {
-  // TODO: integrar con WhatsApp Business API o Twilio
-  console.log(`[WhatsApp] Envío pendiente a ${numero}: ${mensaje}`);
-  return { enviado: false, razon: 'Integración no implementada aún' };
+  const telefono = normalizarTelefono(numero);
+  if (!telefono) return { enviado: false, razon: 'Teléfono inválido' };
+  return crearSalida(telefono).texto(mensaje);
 }
 
 module.exports = { marcarVerificado, enviarConfirmacion };

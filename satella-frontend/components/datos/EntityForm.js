@@ -36,12 +36,21 @@ const fieldConfigs = {
       options: ['08:00 - 10:00', '10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00', '18:00 - 20:00'],
     },
     { key: 'estado', label: 'Estado', type: 'select', options: ['en cola', 'en ruta', 'entregado', 'retraso'] },
+    {
+      key: 'repartidorId',
+      label: 'Repartidor',
+      type: 'select',
+      entity: 'usuarios',
+      optionFilter: (u) => u.rol === 'Repartidor',
+    },
     { key: 'notas', label: 'Notas', type: 'text' },
   ],
   usuarios: [
     { key: 'nombre', label: 'Nombre', type: 'text', required: true },
     { key: 'email', label: 'Email', type: 'email', required: true },
-    { key: 'rol', label: 'Rol', type: 'select', options: ['Administrador', 'Operador', 'Despachador'] },
+    { key: 'rol', label: 'Rol', type: 'select', options: ['Administrador', 'Operador', 'Despachador', 'Repartidor'] },
+    // Con este número el sistema reconoce al personal en el canal de WhatsApp.
+    { key: 'telefono', label: 'Teléfono (WhatsApp)', type: 'text' },
     // Obligatoria solo al crear; al editar, vacío = conservar la contraseña actual.
     { key: 'password', label: 'Contraseña', type: 'password', requiredOnCreate: true, minLength: 8 },
   ],
@@ -133,7 +142,7 @@ export default function EntityForm({ entity, item, onSave, onCancel }) {
                 className="border border-border bg-surface rounded-[8px] px-3 py-2.5 text-xs text-text-primary outline-none"
               >
                 <option value="">Seleccionar...</option>
-                {(selectOptions[field.entity] || []).map((opt) => (
+                {(selectOptions[field.entity] || []).filter(field.optionFilter || (() => true)).map((opt) => (
                   <option key={opt.id} value={opt.id}>{getOptionLabel(field.entity, opt)}</option>
                 ))}
               </select>

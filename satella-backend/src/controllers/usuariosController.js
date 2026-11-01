@@ -3,14 +3,16 @@ const pick = require('../utils/pick');
 const { missingFields, isValidEmail } = require('../utils/validate');
 const { getPagination } = require('../utils/paginate');
 const { hashPassword } = require('../utils/password');
-const { ADMIN_ROLE } = require('../middleware/requireRole');
+const { ADMIN_ROLE, REPARTIDOR_ROLE } = require('../middleware/requireRole');
+const { generarPin } = require('../services/whatsapp/pin');
+const { prepararTelefono } = require('../services/telefonos');
 
-const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password'];
+const ALLOWED_FIELDS = ['nombre', 'rol', 'email', 'password', 'telefono'];
 const REQUIRED_FIELDS = ['nombre', 'email'];
 const MIN_PASSWORD_LENGTH = 8;
 
 // Campos que se pueden devolver al cliente: nunca incluye passwordHash.
-const PUBLIC_SELECT = { id: true, nombre: true, rol: true, email: true };
+const PUBLIC_SELECT = { id: true, nombre: true, rol: true, email: true, telefono: true };
 
 /**
  * Valida el body y lo transforma al formato de la tabla: normaliza el email
@@ -73,6 +75,8 @@ async function create(req, res, next) {
   try {
     const { data, error } = buildUsuarioData(req.body, { requirePassword: true });
     if (error) return res.status(400).json({ error });
+    const telError = await prepararTelefono(data);
+    if (telError) return res.status(400).json({ error: telError });
     const usuario = await prisma.usuario.create({ data, select: PUBLIC_SELECT });
     res.status(201).json(usuario);
   } catch (err) { next(err); }
@@ -98,6 +102,9 @@ async function update(req, res, next) {
       return res.status(400).json({ error: 'No puedes quitarte el rol de Administrador a ti mismo' });
     }
 
+    const telError = await prepararTelefono(data, { usuarioId: req.params.id });
+    if (telError) return res.status(400).json({ error: telError });
+
     const usuario = await prisma.usuario.update({
       where: { id: req.params.id },
       data,
@@ -118,4 +125,21 @@ async function remove(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, remove, PUBLIC_SELECT };
+/**
+ * POST /api/usuarios/:id/pin — genera un PIN temporal para que un repartidor
+ * se identifique en el canal de WhatsApp. El PIN se devuelve en claro solo en
+ * esta respuesta; en la base queda únicamente su hash.
+ */
+async function pin(req, res, next) {
+  try {
+    const usuario = await prisma.usuario.findUnique({ where: { id: req.params.id }, select: PUBLIC_SELECT });
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (usuario.rol !== REPARTIDOR_ROLE) return res.status(400).json({ error: 'Solo los repartidores usan PIN en WhatsApp' });
+    if (!usuario.telefono) return res.status(400).json({ error: 'El repartidor no tiene teléfono registrado' });
+    const { pin: valor, expiraEn } = await generarPin(usuario.id);
+    res.set('Cache-Control', 'no-store');
+    res.status(201).json({ pin: valor, expiraEn, usuario: { id: usuario.id, nombre: usuario.nombre } });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, remove, pin, PUBLIC_SELECT };

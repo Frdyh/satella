@@ -1,0 +1,277 @@
+{
+  "info": {
+    "name": "Satella — Canal de WhatsApp",
+    "description": "Pruebas del webhook de WhatsApp y del simulador. Antes de usarla: en el backend define WA_APP_SECRET, WA_VERIFY_TOKEN y ENABLE_WA_SIMULATOR=true, y pon los mismos valores en las variables de la colección (pestaña Variables). Ejecuta primero \"Login\" para obtener el token del simulador.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "appSecret",
+      "value": "secreto-demo"
+    },
+    {
+      "key": "verifyToken",
+      "value": "verif-demo"
+    },
+    {
+      "key": "wamidFijo",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Login (guarda el token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('token', pm.response.json().token);",
+              "pm.test('login correcto', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"juan@satella.local\",\n  \"password\": \"satella123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "1. Verificación de Meta (GET) → devuelve 987654",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('devuelve el challenge', () => pm.expect(pm.response.text()).to.eql('987654'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token={{verifyToken}}&hub.challenge=987654"
+      }
+    },
+    {
+      "name": "2. Webhook: mensaje de texto (firmado) → 200",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/webhook",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550000000\",\n              \"phone_number_id\": \"PHONE_ID\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"Laura\"\n                },\n                \"wa_id\": \"573114441001\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"573114441001\",\n                \"id\": \"__WAMID__\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Hola, quiero hacer un pedido\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Firma el cuerpo igual que Meta: HMAC-SHA256 con el app secret (WA_APP_SECRET).",
+              "// Cada envío lleva un wamid nuevo; para probar la idempotencia, copia el wamid",
+              "// de la consola de Postman y ponlo en la variable \"wamidFijo\".",
+              "const fijo = pm.collectionVariables.get('wamidFijo');",
+              "const wamid = fijo || ('wamid.postman-' + Date.now());",
+              "const body = pm.request.body.raw.replace('__WAMID__', wamid);",
+              "pm.request.body.update(body);",
+              "const firma = CryptoJS.HmacSHA256(body, pm.collectionVariables.get('appSecret')).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'X-Hub-Signature-256', value: 'sha256=' + firma });",
+              "console.log('wamid enviado:', wamid);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Webhook: botón \"Acepto\" (firmado) → 200",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/webhook",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550000000\",\n              \"phone_number_id\": \"PHONE_ID\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"Laura\"\n                },\n                \"wa_id\": \"573114441001\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"573114441001\",\n                \"id\": \"__WAMID__\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"consent:si\",\n                    \"title\": \"Acepto\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Firma el cuerpo igual que Meta: HMAC-SHA256 con el app secret (WA_APP_SECRET).",
+              "// Cada envío lleva un wamid nuevo; para probar la idempotencia, copia el wamid",
+              "// de la consola de Postman y ponlo en la variable \"wamidFijo\".",
+              "const fijo = pm.collectionVariables.get('wamidFijo');",
+              "const wamid = fijo || ('wamid.postman-' + Date.now());",
+              "const body = pm.request.body.raw.replace('__WAMID__', wamid);",
+              "pm.request.body.update(body);",
+              "const firma = CryptoJS.HmacSHA256(body, pm.collectionVariables.get('appSecret')).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'X-Hub-Signature-256', value: 'sha256=' + firma });",
+              "console.log('wamid enviado:', wamid);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Webhook: opción de lista (firmado) → 200",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/webhook",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550000000\",\n              \"phone_number_id\": \"PHONE_ID\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"Laura\"\n                },\n                \"wa_id\": \"573114441001\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"573114441001\",\n                \"id\": \"__WAMID__\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"list_reply\",\n                  \"list_reply\": {\n                    \"id\": \"menu:pedido\",\n                    \"title\": \"Hacer pedido\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Firma el cuerpo igual que Meta: HMAC-SHA256 con el app secret (WA_APP_SECRET).",
+              "// Cada envío lleva un wamid nuevo; para probar la idempotencia, copia el wamid",
+              "// de la consola de Postman y ponlo en la variable \"wamidFijo\".",
+              "const fijo = pm.collectionVariables.get('wamidFijo');",
+              "const wamid = fijo || ('wamid.postman-' + Date.now());",
+              "const body = pm.request.body.raw.replace('__WAMID__', wamid);",
+              "pm.request.body.update(body);",
+              "const firma = CryptoJS.HmacSHA256(body, pm.collectionVariables.get('appSecret')).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'X-Hub-Signature-256', value: 'sha256=' + firma });",
+              "console.log('wamid enviado:', wamid);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Webhook: firma falsa → 401",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Hub-Signature-256",
+            "value": "sha256=firma-falsa"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/webhook",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15550000000\",\n              \"phone_number_id\": \"PHONE_ID\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"Laura\"\n                },\n                \"wa_id\": \"573114441001\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"573114441001\",\n                \"id\": \"wamid.firma-falsa\",\n                \"timestamp\": \"1760000000\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Hola, quiero hacer un pedido\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "6. Simulador: texto",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/simulador",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"telefono\": \"311 444 1001\",\n  \"texto\": \"Hola\"\n}"
+        }
+      }
+    },
+    {
+      "name": "7. Simulador: opción",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/simulador",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"telefono\": \"3114441001\",\n  \"opcionId\": \"menu:pedido\",\n  \"opcionTexto\": \"Hacer pedido\"\n}"
+        }
+      }
+    },
+    {
+      "name": "8. Simulador: wamid repetido (envíalo 2 veces → 'duplicado')",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/whatsapp/simulador",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"telefono\": \"3114441001\",\n  \"texto\": \"Hola\",\n  \"wamid\": \"sim-repetido-1\"\n}"
+        }
+      }
+    }
+  ]
+}
