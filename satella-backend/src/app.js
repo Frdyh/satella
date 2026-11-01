@@ -12,6 +12,14 @@ const requireAuth = require('./middleware/requireAuth');
 
 const app = express();
 
+// Si corre detrás de un proxy/load balancer, hay que decirle a Express cuántos
+// saltos confiar para que req.ip sea la IP real del cliente (si no, el rate
+// limiter de login cuenta a todos los clientes como uno solo).
+// "true"/"false" se interpretan como booleanos: de lo contrario Express recibe
+// el string "false" y lo rechaza como preset/IP inválido al leer req.ip.
+if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', true);
+else if (process.env.TRUST_PROXY && process.env.TRUST_PROXY !== 'false') app.set('trust proxy', process.env.TRUST_PROXY);
+
 app.use(helmet());
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -46,6 +54,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Los PDFs de reportes se abren en otra pestaña (sin headers), por eso aceptan
+// ?token=<token> en la URL — por eso se montan con su propio middleware antes
+// del requireAuth global, que solo acepta el header Authorization.
+app.use('/api/reportes', requireAuth.withQueryToken, require('./routes/reportes'));
+
 // Todo lo que se monte después de esta línea exige un token válido.
 app.use('/api', requireAuth);
 
@@ -56,7 +69,6 @@ app.use('/api/clientes', require('./routes/clientes'));
 app.use('/api/usuarios', require('./routes/usuarios'));
 app.use('/api/pedidos', require('./routes/pedidos'));
 app.use('/api/envios', require('./routes/envios'));
-app.use('/api/reportes', require('./routes/reportes'));
 // Problemas que reportan los repartidores por WhatsApp (ReporteProblema).
 app.use('/api/alertas', require('./routes/alertas'));
 
